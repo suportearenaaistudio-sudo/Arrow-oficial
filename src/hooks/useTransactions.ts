@@ -27,7 +27,7 @@ export function useTransactions(period?: { start: string; end: string }) {
     mutationFn: async (t: Partial<Transaction>) => {
       const { data, error } = await supabase
         .from('transactions')
-        .insert({ ...t, user_id: user!.id })
+        .insert({ ...t, user_id: user!.id } as any)
         .select()
         .single();
       if (error) throw error;
