@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Compass, Target, CheckSquare, Flame, DollarSign, Heart, Smile, Meh, Frown, Angry, TrendingUp, Plus, ChevronRight, Sparkles } from 'lucide-react';
+import { Compass, Target, CheckSquare, Flame, DollarSign, Heart, Smile, Meh, Frown, TrendingUp, Plus } from 'lucide-react';
 import { useCycles, getCurrentWeek, getCycleProgress } from '@/hooks/useCycles';
 import { useGoals } from '@/hooks/useGoals';
 import { useTasks } from '@/hooks/useTasks';
@@ -7,6 +7,7 @@ import { useHabits } from '@/hooks/useHabits';
 import { useTransactions } from '@/hooks/useTransactions';
 import { useNavigate } from 'react-router-dom';
 import { Progress } from '@/components/ui/progress';
+import TimeBlocks from '@/components/ui/TimeBlocks';
 
 const moodIcons = [
   { mood: 'muito_feliz', Icon: Smile, label: 'Muito Feliz' },
@@ -203,13 +204,19 @@ export default function Dashboard() {
         </motion.div>
       </div>
 
+      {/* Time Blocks */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.28 }}
+        className="mb-6">
+        <TimeBlocks />
+      </motion.div>
+
       {/* Motivational quote */}
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
         className="bg-gradient-to-r from-gray-900 to-gray-800 rounded-2xl p-8 text-center text-white">
         <p className="text-lg font-light italic leading-relaxed max-w-2xl mx-auto">
-          "Você não pode mudar o passado ou agir no futuro. O momento atual — o eterno agora — é tudo o que você tem. O futuro é escrito neste instante, nossos sonhos acontecem neste momento."
+          "Ö a grande vantagem de viver 12 semanas como um ano: você falha mais rápido, aprende mais rápido e cresce mais rápido."
         </p>
-        <p className="text-xs text-gray-400 mt-4">Foque no presente e transforme seus sonhos em realidade</p>
+        <p className="text-xs text-gray-400 mt-4">Brian Moran — The 12 Week Year</p>
       </motion.div>
     </motion.div>
   );

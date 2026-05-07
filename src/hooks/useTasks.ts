@@ -83,7 +83,25 @@ export function useTasks() {
     onError: () => showError('Erro ao excluir tarefa'),
   });
 
+  // Vincula tarefa existente a ciclo + semana + meta
+  const linkTask = useMutation({
+    mutationFn: async ({ id, cycle_id, week_number, goal_id }: {
+      id: string; cycle_id?: string; week_number?: number; goal_id?: string;
+    }) => {
+      const { error } = await supabase.from('tasks')
+        .update({ cycle_id: cycle_id ?? null, week_number: week_number ?? null, goal_id: goal_id ?? null } as any)
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      showSuccess('Tarefa vinculada!');
+    },
+    onError: () => showError('Erro ao vincular tarefa'),
+  });
+
   const tasks = tasksQuery.data || [];
+
   const byStatus = {
     a_fazer: tasks.filter(t => t.status === 'a_fazer'),
     em_andamento: tasks.filter(t => t.status === 'em_andamento'),
@@ -91,5 +109,29 @@ export function useTasks() {
     concluida: tasks.filter(t => t.status === 'concluida'),
   };
 
-  return { tasks, byStatus, isLoading: tasksQuery.isLoading, createTask, updateTask, moveTask, deleteTask };
+  function getTasksByWeek(cycleId: string, weekNumber: number) {
+    return tasks.filter(t => t.cycle_id === cycleId && t.week_number === weekNumber);
+  }
+
+  function getTasksByGoal(goalId: string) {
+    return tasks.filter(t => t.goal_id === goalId);
+  }
+
+  function getTasksByCycle(cycleId: string) {
+    return tasks.filter(t => t.cycle_id === cycleId);
+  }
+
+  // Score de execução em tempo real (%)
+  function getWeekScore(cycleId: string, weekNumber: number) {
+    const weekTasks = getTasksByWeek(cycleId, weekNumber);
+    if (weekTasks.length === 0) return null;
+    const done = weekTasks.filter(t => t.status === 'concluida').length;
+    return Math.round((done / weekTasks.length) * 100);
+  }
+
+  return {
+    tasks, byStatus, isLoading: tasksQuery.isLoading,
+    createTask, updateTask, moveTask, deleteTask, linkTask,
+    getTasksByWeek, getTasksByGoal, getTasksByCycle, getWeekScore,
+  };
 }

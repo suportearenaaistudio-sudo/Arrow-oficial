@@ -138,6 +138,8 @@ export interface Cycle {
   user_id: string;
   title: string;
   description?: string;
+  vision?: string;        // visão das 12 semanas deste ciclo
+  focus_area?: string;    // área de foco principal do ciclo
   start_date: string;
   end_date: string;
   status: CycleStatus;
@@ -188,6 +190,7 @@ export interface Task {
   actual_hours: number;
   goal_id?: string;
   cycle_id?: string;
+  week_number?: number;     // semana do ciclo (1-12)
   tags: string[];
   assignee?: string;
   progress_percentage: number;
@@ -308,3 +311,13 @@ export type ViewMode = 'cards' | 'timeline' | 'kanban' | 'matrix' | 'calendar';
 export type FinancePeriod = 'semanal' | 'mensal' | 'anual';
 
 export type AnalysisPeriod = 'atual' | 'mes' | 'trimestre' | 'ano';
+
+export type TimeBlockType = 'estrategico' | 'buffer' | 'escape';
+
+export interface TimeBlock {
+  type: TimeBlockType;
+  label: string;
+  description: string;
+  color: string;
+  defaultMinutes: number;
+}

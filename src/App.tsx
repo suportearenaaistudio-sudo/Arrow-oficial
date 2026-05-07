@@ -20,6 +20,7 @@ import Finances from "./pages/Finances";
 import Notes from "./pages/Notes";
 import Analysis from "./pages/Analysis";
 import Settings from "./pages/Settings";
+import Vision from "./pages/Vision";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -39,6 +40,7 @@ const App = () => (
             {/* Protected (inside AppLayout) */}
             <Route element={<AppLayout />}>
               <Route path="/" element={<Dashboard />} />
+              <Route path="/vision" element={<Vision />} />
               <Route path="/planning" element={<Planning />} />
               <Route path="/cycles" element={<Cycles />} />
               <Route path="/goals" element={<Goals />} />

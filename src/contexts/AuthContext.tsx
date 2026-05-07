@@ -55,6 +55,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true;
 
+    // Safety timeout: if Supabase doesn't respond in 5s, stop loading anyway
+    const safetyTimeout = setTimeout(() => {
+      if (mounted && loading) {
+        console.warn('Auth init timeout — Supabase may be offline. Releasing app.');
+        setLoading(false);
+      }
+    }, 5000);
+
     async function init() {
       try {
         const { data: { session: currentSession } } = await supabase.auth.getSession();
@@ -105,6 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       mounted = false;
+      clearTimeout(safetyTimeout);
       subscription.unsubscribe();
     };
   }, [fetchProfile]);

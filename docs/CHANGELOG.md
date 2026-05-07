@@ -4,6 +4,73 @@ Todas as alterações notáveis do projeto Arrow estão documentadas neste arqui
 
 ---
 
+## [alpha-0.5.1] — 2026-05-07
+
+**Commit:** `feat: Arrow alpha 0.5.1 — Sistema 12 Week Year (Visão, Ciclos, Planejamento, Blocos de Tempo)`
+**Horário:** 17:51 BRT
+
+### Sistema Funcional — 12 Week Year
+
+#### Banco de Dados (Migration 005)
+- Adicionados campos `vision` e `focus_area` na tabela `cycles`
+- Adicionados campos `week_number`, `cycle_id`, `goal_id` na tabela `tasks`
+- Nova tabela `visions` — visão de longo prazo por área (carreira, saúde, finanças, relacionamentos, impacto)
+- Nova tabela `weekly_scores` — score de execução calculado automaticamente por semana/ciclo, com campos `what_went_wrong`, `lessons`, `finalized_at`
+- RLS e índices de performance em todas as novas tabelas
+
+#### Novos Hooks
+- `useVision` — busca e salva visão de 5 anos com upsert por `user_id`
+- `useWeeklyScores` — scores por ciclo, média, finalização de semana, helpers de cor (verde/amarelo/vermelho)
+- `useTasks` (atualizado) — adicionados `linkTask`, `getTasksByWeek`, `getTasksByGoal`, `getTasksByCycle`, `getWeekScore`
+
+#### Página Visão (`/vision`) — NOVA
+- Seção de KPIs do ciclo ativo: score de execução, score de resultado, semana atual/total
+- Histórico visual de scores semanais em barras coloridas (verde ≥85%, amarelo 70–84%, vermelho <70%)
+- Visão das 12 Semanas: campo editável vinculado ao ciclo ativo
+- Visão de 5 Anos: 5 áreas editáveis inline com salvamento individual
+- Item "Visão" adicionado ao menu lateral (ícone Eye)
+
+#### Página Ciclos — ATUALIZADA
+- Formulário de 2 etapas:
+  - Etapa 1: título, descrição, data, duração, categoria (com emoji)
+  - Etapa 2: visão das 12 semanas + área de foco (grid de seleção)
+- Cards exibem: visão do ciclo em quote destacado, score médio, área de foco, mini histórico de scores
+- Botão "Planejar →" no ciclo ativo para ir direto ao Planejamento
+- Categorias com emoji no seletor
+
+#### Página Planejamento — REFATORADA
+- **MIT do Dia**: texto livre + seleção de tarefa da semana, persistido por dia no localStorage
+- **Tarefas da Semana**: agrupadas por meta ativa com score parcial por grupo
+  - Criar nova tarefa inline (vinculada ao ciclo + semana + meta)
+  - Vincular tarefa existente ao ciclo/semana
+  - Checkbox para marcar conclusão em tempo real
+- **Score em tempo real**: barra colorida calculada ao marcar tarefas
+- **Check-in Diário** (modal): humor (5 opções), produtividade 1–10, destaque do dia, foco de amanhã
+- **Banner de Relatório Semanal**: aparece automaticamente no último dia de cada semana do ciclo
+- **Relatório Semanal** (modal):
+  - KPIs: tarefas planejadas, concluídas, score
+  - Timeline visual de todos os check-ins da semana com humor e destaque
+  - Campo "O que não funcionou" + "Aprendizado da semana"
+  - Finaliza e grava em `weekly_scores`
+
+#### Blocos de Tempo com Timer Real — NOVO (Dashboard)
+- 3 tipos de bloco com cores distintas:
+  - 🧠 **Estratégico** (roxo, 90min) — trabalho profundo
+  - 📋 **Buffer** (amarelo, 30min) — e-mails e tarefas operacionais
+  - 🌿 **Escape** (verde, 60min) — descanso e recarga
+- Duração customizável por bloco (campo numérico editável)
+- Seleção de tarefa da semana atual para vincular ao bloco
+- Timer circular SVG com contagem regressiva em tempo real
+- Pause/Continuar e Reset
+- Notificação do browser ao finalizar o bloco
+
+#### Tipos Atualizados (`arrow.ts`)
+- `Cycle`: adicionados `vision` e `focus_area`
+- `Task`: adicionado `week_number`
+- Novos: `TimeBlockType` e `TimeBlock`
+
+---
+
 ## [alpha-0.5.0] — 2026-05-06
 
 **Commit:** `feat: Arrow alpha 0.5.0 — Auth, Themes, Rain Effects & Full App`

@@ -5,11 +5,12 @@ import { useTheme } from '@/contexts/ThemeContext';
 import {
   LayoutDashboard, Calendar, Target, ListChecks,
   Repeat, Wallet, StickyNote, BarChart3,
-  Settings, Compass, Flame,
+  Settings, Compass, Flame, Eye,
 } from 'lucide-react';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { path: '/vision', label: 'Visão', icon: Eye },
   { path: '/planning', label: 'Planejamento', icon: Calendar },
   { path: '/cycles', label: 'Ciclos', icon: Flame },
   { path: '/goals', label: 'Metas', icon: Target },
