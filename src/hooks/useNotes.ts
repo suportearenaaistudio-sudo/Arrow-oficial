@@ -22,7 +22,7 @@ export function useNotes() {
 
   const createNote = useMutation({
     mutationFn: async (note: Partial<Note>) => {
-      const { data, error } = await supabase.from('notes').insert({ ...note, user_id: user!.id }).select().single();
+      const { data, error } = await supabase.from('notes').insert({ ...note, user_id: user!.id } as any).select().single();
       if (error) throw error;
       return data;
     },
@@ -35,7 +35,7 @@ export function useNotes() {
 
   const updateNote = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Note> & { id: string }) => {
-      const { error } = await supabase.from('notes').update(updates).eq('id', id);
+      const { error } = await supabase.from('notes').update(updates as any).eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notes'] }),

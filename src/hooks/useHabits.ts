@@ -27,7 +27,7 @@ export function useHabits() {
     mutationFn: async (habit: Partial<Habit>) => {
       const { data, error } = await supabase
         .from('habits')
-        .insert({ ...habit, user_id: user!.id })
+        .insert({ ...habit, user_id: user!.id } as any)
         .select()
         .single();
       if (error) throw error;
@@ -79,7 +79,7 @@ export function useHabits() {
           completion_history: history,
           current_streak: currentStreak,
           longest_streak: longestStreak,
-        })
+        } as any)
         .eq('id', habit.id);
       if (error) throw error;
     },
@@ -91,7 +91,7 @@ export function useHabits() {
 
   const updateHabit = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Habit> & { id: string }) => {
-      const { error } = await supabase.from('habits').update(updates).eq('id', id);
+      const { error } = await supabase.from('habits').update(updates as any).eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['habits'] }),
