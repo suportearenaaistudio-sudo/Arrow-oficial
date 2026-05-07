@@ -27,7 +27,7 @@ export function useTasks() {
     mutationFn: async (task: Partial<Task>) => {
       const { data, error } = await supabase
         .from('tasks')
-        .insert({ ...task, user_id: user!.id })
+        .insert({ ...task, user_id: user!.id } as any)
         .select()
         .single();
       if (error) throw error;
@@ -42,7 +42,7 @@ export function useTasks() {
 
   const updateTask = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Task> & { id: string }) => {
-      const { data, error } = await supabase.from('tasks').update(updates).eq('id', id).select().single();
+      const { data, error } = await supabase.from('tasks').update(updates as any).eq('id', id).select().single();
       if (error) throw error;
       return data;
     },
@@ -61,7 +61,7 @@ export function useTasks() {
       if (status === 'concluida') {
         updates.completion_date = new Date().toISOString().split('T')[0];
       }
-      const { error } = await supabase.from('tasks').update(updates).eq('id', id);
+      const { error } = await supabase.from('tasks').update(updates as any).eq('id', id);
       if (error) throw error;
     },
     onSuccess: (_, { status }) => {

@@ -55,7 +55,7 @@ export function useCycles() {
           end_date: endDate.toISOString().split('T')[0],
           weekly_checkins: checkins,
           duration,
-        })
+        } as any)
         .select()
         .single();
       if (error) throw error;
@@ -72,7 +72,7 @@ export function useCycles() {
     mutationFn: async ({ id, ...updates }: Partial<Cycle> & { id: string }) => {
       const { data, error } = await supabase
         .from('cycles')
-        .update(updates)
+        .update(updates as any)
         .eq('id', id)
         .select()
         .single();

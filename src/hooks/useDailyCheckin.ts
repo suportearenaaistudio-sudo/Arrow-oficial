@@ -44,12 +44,12 @@ export function useDailyCheckin() {
     mutationFn: async (checkin: Partial<DailyCheckin>) => {
       const existing = todayCheckin.data;
       if (existing) {
-        const { error } = await supabase.from('daily_checkins').update(checkin).eq('id', existing.id);
+        const { error } = await supabase.from('daily_checkins').update(checkin as any).eq('id', existing.id);
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from('daily_checkins')
-          .insert({ ...checkin, user_id: user!.id, date: today });
+          .insert({ ...checkin, user_id: user!.id, date: today } as any);
         if (error) throw error;
       }
     },

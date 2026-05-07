@@ -13,8 +13,8 @@ export function useGoals(filters?: { category?: string; status?: string; search?
     queryKey: ['goals', user?.id, filters],
     queryFn: async () => {
       let query = supabase.from('goals').select('*').order('updated_at', { ascending: false });
-      if (filters?.category) query = query.eq('category', filters.category);
-      if (filters?.status) query = query.eq('status', filters.status);
+      if (filters?.category) query = query.eq('category', filters.category as any);
+      if (filters?.status) query = query.eq('status', filters.status as any);
       if (filters?.cycleId) query = query.eq('cycle_id', filters.cycleId);
       if (filters?.search) query = query.ilike('title', `%${filters.search}%`);
       const { data, error } = await query;
@@ -29,7 +29,7 @@ export function useGoals(filters?: { category?: string; status?: string; search?
     mutationFn: async (goal: Partial<Goal>) => {
       const { data, error } = await supabase
         .from('goals')
-        .insert({ ...goal, user_id: user!.id })
+        .insert({ ...goal, user_id: user!.id } as any)
         .select()
         .single();
       if (error) throw error;
@@ -44,7 +44,7 @@ export function useGoals(filters?: { category?: string; status?: string; search?
 
   const updateGoal = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Goal> & { id: string }) => {
-      const { data, error } = await supabase.from('goals').update(updates).eq('id', id).select().single();
+      const { data, error } = await supabase.from('goals').update(updates as any).eq('id', id).select().single();
       if (error) throw error;
       return data;
     },
