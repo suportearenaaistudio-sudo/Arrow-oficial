@@ -13,5 +13,9 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     storage: localStorage,
     persistSession: true,
     autoRefreshToken: true,
+    // Disable Web Locks API to prevent orphaned lock deadlocks
+    // (caused by tab crashes, fast refreshes, or multiple tabs)
+    lock: (name: string, acquireTimeout: number, fn: () => Promise<any>) => fn(),
+    detectSessionInUrl: true,
   }
 });

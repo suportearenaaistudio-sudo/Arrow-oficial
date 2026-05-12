@@ -55,18 +55,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true;
 
-    // Safety timeout: if Supabase doesn't respond in 15s, stop loading anyway
-    // (Supabase free-tier cold starts can take 10s+)
+    // Safety timeout: if Supabase doesn't respond in 10s, clear stale state and release
     const safetyTimeout = setTimeout(() => {
       if (mounted && loading) {
-        console.warn('Auth init timeout (15s) — releasing app without session.');
+        console.warn('Auth init timeout — clearing stale session data and releasing app.');
+        // Clear potentially corrupted auth storage
+        try {
+          const storageKey = `sb-lsehzmqywlpzceyctwrr-auth-token`;
+          localStorage.removeItem(storageKey);
+        } catch (_) { /* ignore */ }
         setLoading(false);
       }
-    }, 15000);
+    }, 10000);
 
     async function init() {
       try {
-        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
+
+        if (sessionError) {
+          console.warn('Auth getSession error:', sessionError.message);
+          // Clear stale data that may be causing the error
+          try {
+            const storageKey = `sb-lsehzmqywlpzceyctwrr-auth-token`;
+            localStorage.removeItem(storageKey);
+          } catch (_) { /* ignore */ }
+        }
 
         if (mounted) {
           setSession(currentSession);
@@ -81,6 +94,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (err) {
         console.error('Auth init error:', err);
+        // On critical failure, clear auth data to prevent persistent deadlocks
+        try {
+          const storageKey = `sb-lsehzmqywlpzceyctwrr-auth-token`;
+          localStorage.removeItem(storageKey);
+        } catch (_) { /* ignore */ }
         if (mounted) setLoading(false);
       }
     }
