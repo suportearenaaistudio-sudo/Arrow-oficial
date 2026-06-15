@@ -89,7 +89,7 @@ Localize o `useEffect` de inicialização do auth e aplique estas melhorias:
 useEffect(() => {
   let mounted = true;
 
-  // Extraia o ref do seu SUPABASE_URL (ex: "lsehzmqywlpzceyctwrr")
+  // Extraia o ref do seu VITE_SUPABASE_URL (ex: "abcdefghijklmnop")
   const PROJECT_REF = "SEU_PROJECT_REF_AQUI";
   const storageKey = `sb-${PROJECT_REF}-auth-token`;
 

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { getSupabaseAuthStorageKey } from '@/lib/supabase-config';
 import type { Profile } from '@/types/arrow';
 
 interface AuthContextType {
@@ -61,7 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.warn('Auth init timeout — clearing stale session data and releasing app.');
         // Clear potentially corrupted auth storage
         try {
-          const storageKey = `sb-lsehzmqywlpzceyctwrr-auth-token`;
+          const storageKey = getSupabaseAuthStorageKey();
           localStorage.removeItem(storageKey);
         } catch (_) { /* ignore */ }
         setLoading(false);
@@ -76,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.warn('Auth getSession error:', sessionError.message);
           // Clear stale data that may be causing the error
           try {
-            const storageKey = `sb-lsehzmqywlpzceyctwrr-auth-token`;
+            const storageKey = getSupabaseAuthStorageKey();
             localStorage.removeItem(storageKey);
           } catch (_) { /* ignore */ }
         }
@@ -96,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error('Auth init error:', err);
         // On critical failure, clear auth data to prevent persistent deadlocks
         try {
-          const storageKey = `sb-lsehzmqywlpzceyctwrr-auth-token`;
+          const storageKey = getSupabaseAuthStorageKey();
           localStorage.removeItem(storageKey);
         } catch (_) { /* ignore */ }
         if (mounted) setLoading(false);
