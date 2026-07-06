@@ -1,6 +1,7 @@
 import { Outlet, Navigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
+import { useVault } from '@/contexts/VaultContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useVisualQuality } from '@/contexts/VisualQualityContext';
 import { SidebarProvider, useSidebar } from '@/contexts/SidebarContext';
 import { StarfieldBackground } from '@/components/ui/StarfieldBackground';
 import { RainBackground } from '@/components/ui/RainBackground';
@@ -8,9 +9,10 @@ import TopBar from './TopBar';
 import AppSidebar from './AppSidebar';
 
 function LayoutInner() {
-  const { user, loading } = useAuth();
+  const { isReady, loading } = useVault();
   const { theme } = useTheme();
   const { collapsed } = useSidebar();
+  const { showHeavyEffects } = useVisualQuality();
 
   if (loading) {
     return (
@@ -23,15 +25,14 @@ function LayoutInner() {
     );
   }
 
-  // Redirect to auth if not logged in
-  if (!user) {
-    return <Navigate to="/auth" replace />;
+  if (!isReady) {
+    return <Navigate to="/setup" replace />;
   }
 
   return (
     <div className="min-h-screen" style={{ background: theme.bg }}>
-      {theme.hasStarfield && <StarfieldBackground isDark={theme.isDark} />}
-      {theme.hasRain && <RainBackground />}
+      {showHeavyEffects && theme.hasStarfield && <StarfieldBackground isDark={theme.isDark} />}
+      {showHeavyEffects && theme.hasRain && <RainBackground />}
 
       <AppSidebar />
 

@@ -1,37 +1,24 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
+import { desktopAPI } from '@/lib/desktop-api';
+import { useVault } from '@/contexts/VaultContext';
 import { useNotification } from './useNotification';
 import type { Habit, HabitCompletion } from '@/types/arrow';
 
 export function useHabits() {
-  const { user } = useAuth();
+  const { profile } = useVault();
   const queryClient = useQueryClient();
   const { showSuccess, showError } = useNotification();
 
   const habitsQuery = useQuery({
-    queryKey: ['habits', user?.id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('habits')
-        .select('*')
-        .order('updated_at', { ascending: false });
-      if (error) throw error;
-      return (data || []) as unknown as Habit[];
-    },
-    enabled: !!user,
+    queryKey: ['habits', profile?.id],
+    queryFn: () => desktopAPI.db.habits.list() as Promise<Habit[]>,
+    enabled: !!profile,
     retry: false,
   });
 
   const createHabit = useMutation({
     mutationFn: async (habit: Partial<Habit>) => {
-      const { data, error } = await supabase
-        .from('habits')
-        .insert({ ...habit, user_id: user!.id } as any)
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
+      return desktopAPI.db.habits.create(habit) as Promise<Habit>;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['habits'] });
@@ -51,7 +38,6 @@ export function useHabits() {
         history.push({ date, completed: true });
       }
 
-      // Recalculate streak
       const sortedDates = history
         .filter((h: HabitCompletion) => h.completed)
         .map((h: HabitCompletion) => h.date)
@@ -73,26 +59,20 @@ export function useHabits() {
 
       const longestStreak = Math.max(habit.longest_streak || 0, currentStreak);
 
-      const { error } = await supabase
-        .from('habits')
-        .update({
-          completion_history: history,
-          current_streak: currentStreak,
-          longest_streak: longestStreak,
-        } as any)
-        .eq('id', habit.id);
-      if (error) throw error;
+      await desktopAPI.db.habits.update({
+        id: habit.id,
+        completion_history: history,
+        current_streak: currentStreak,
+        longest_streak: longestStreak,
+      });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['habits'] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['habits'] }),
     onError: () => showError('Erro ao atualizar hábito'),
   });
 
   const updateHabit = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Habit> & { id: string }) => {
-      const { error } = await supabase.from('habits').update(updates as any).eq('id', id);
-      if (error) throw error;
+      await desktopAPI.db.habits.update({ id, ...updates });
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['habits'] }),
     onError: () => showError('Erro ao atualizar hábito'),
@@ -100,8 +80,7 @@ export function useHabits() {
 
   const deleteHabit = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('habits').delete().eq('id', id);
-      if (error) throw error;
+      await desktopAPI.db.habits.delete(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['habits'] });

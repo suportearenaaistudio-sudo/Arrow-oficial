@@ -132,6 +132,7 @@
     border: 1px solid var(--arrow-border);
     box-shadow: 0 1px 3px rgba(0,0,0,0.04);
     transition: box-shadow 0.3s ease, transform 0.2s ease, background 0.3s ease, border-color 0.3s ease;
+    contain: layout style paint;
   }
   .arrow-card:hover {
     box-shadow: 0 4px 16px rgba(0,0,0,0.08);
@@ -327,3 +328,4 @@
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+

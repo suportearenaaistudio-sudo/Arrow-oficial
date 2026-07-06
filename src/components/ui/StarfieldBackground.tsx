@@ -1,33 +1,20 @@
-// StarfieldBackground.tsx
-// ✦ Sparkle starfield | Scroll parallax (rAF poll)
+// StarfieldBackground — canvas sparkle starfield with scroll parallax
 
-import { useEffect, useRef, memo, useState } from 'react';
+import { useEffect, useRef, memo } from 'react';
+import { bindScrollWake, getAppScrollY } from '@/lib/platform';
+import { useVisualQuality } from '@/contexts/VisualQualityContext';
 
-// ── Config ──────────────────────────────────────────────────────────────────
 const LAYERS = [
-  { count: 120, minR: 1.0, maxR: 1.5,  minO: 0.25, maxO: 0.55, speed: 0.06 },
-  { count: 90,  minR: 1.5, maxR: 2.5,  minO: 0.25, maxO: 0.55, speed: 0.13 },
-  { count: 50,  minR: 2.5, maxR: 3.8,  minO: 0.22, maxO: 0.45, speed: 0.22 },
+  { count: 120, minR: 1.0, maxR: 1.5, minO: 0.25, maxO: 0.55, speed: 0.06 },
+  { count: 90, minR: 1.5, maxR: 2.5, minO: 0.25, maxO: 0.55, speed: 0.13 },
+  { count: 50, minR: 2.5, maxR: 3.8, minO: 0.22, maxO: 0.45, speed: 0.22 },
 ] as const;
 
 const TWINKLE_RATIO = 0.22;
-const LIME_DARK  = 'rgba(162,255,76,';
-const WHITE_DARK = 'rgba(215,230,255,';
-const LIME_LIGHT  = 'rgba(80,130,30,';
-const BLACK_LIGHT = 'rgba(30,30,60,';
+const TWINKLE_INTERVAL_ALTA_MS = 66;
+const TWINKLE_INTERVAL_BALANCEADA_MS = 100;
 
-// ✦ 4-pointed sparkle, centered at (0,0), outer=1, inner=0.35
-const SPARKLE = 'M 0 -1 L 0.35 -0.35 L 1 0 L 0.35 0.35 L 0 1 L -0.35 0.35 L -1 0 L -0.35 -0.35 Z';
-
-// ── Seeded RNG ────────────────────────────────────────────────────────────
-function rng(seed: number) {
-  let s = seed;
-  return () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff; };
-}
-
-// ── Star definitions (generated once, stable) ────────────────────────────
 interface Star {
-  id: number;
   xPct: number;
   yPct: number;
   r: number;
@@ -36,171 +23,191 @@ interface Star {
   twinkle: boolean;
   twinkleDur: number;
   twinkleDelay: number;
+  layer: number;
 }
 
-const STAR_DEFS: Star[][] = (() => {
+function rng(seed: number) {
+  let s = seed;
+  return () => {
+    s = (s * 1664525 + 1013904223) & 0xffffffff;
+    return (s >>> 0) / 0xffffffff;
+  };
+}
+
+const ALL_STARS: Star[] = (() => {
   const rand = rng(0xcafe1234);
-  let id = 0;
-  return LAYERS.map(cfg =>
-    Array.from({ length: cfg.count }, (): Star => ({
-      id: id++,
-      xPct: rand() * 100,
-      yPct: rand() * 100,
-      r: rand() * (cfg.maxR - cfg.minR) + cfg.minR,
-      opacity: rand() * (cfg.maxO - cfg.minO) + cfg.minO,
-      isLime: rand() < 0.04,
-      twinkle: rand() < TWINKLE_RATIO,
-      twinkleDur: 1.5 + rand() * 3.5,
-      twinkleDelay: rand() * 5,
-    }))
-  );
+  const stars: Star[] = [];
+  LAYERS.forEach((cfg, layer) => {
+    for (let i = 0; i < cfg.count; i++) {
+      stars.push({
+        xPct: rand() * 100,
+        yPct: rand() * 100,
+        r: rand() * (cfg.maxR - cfg.minR) + cfg.minR,
+        opacity: rand() * (cfg.maxO - cfg.minO) + cfg.minO,
+        isLime: rand() < 0.04,
+        twinkle: rand() < TWINKLE_RATIO,
+        twinkleDur: 1.5 + rand() * 3.5,
+        twinkleDelay: rand() * 5,
+        layer,
+      });
+    }
+  });
+  return stars;
 })();
 
-// ── Star element ─────────────────────────────────────────────────────────
-function StarEl({ s, w, h, isDark }: { s: Star; w: number; h: number; isDark: boolean }) {
-  const px = (s.xPct / 100) * w;
-  const py = (s.yPct / 100) * h;
-  const lime = isDark ? LIME_DARK : LIME_LIGHT;
-  const base = isDark ? WHITE_DARK : BLACK_LIGHT;
-  const fill = `${s.isLime ? lime : base}${s.opacity})`;
+const HAS_TWINKLE = ALL_STARS.some((s) => s.twinkle);
 
-  return (
-    <path
-      d={SPARKLE}
-      fill={fill}
-      transform={`translate(${px} ${py}) scale(${s.r})`}
-      style={s.twinkle ? {
-        animationName: 'arrow-twinkle',
-        animationDuration: `${s.twinkleDur}s`,
-        animationDelay: `${s.twinkleDelay}s`,
-        animationTimingFunction: 'ease-in-out',
-        animationIterationCount: 'infinite',
-        animationDirection: 'alternate',
-      } : undefined}
-    />
-  );
+function starColor(star: Star, isDark: boolean, alpha: number): string {
+  if (star.isLime) {
+    return isDark ? `rgba(162,255,76,${alpha})` : `rgba(80,130,30,${alpha})`;
+  }
+  return isDark ? `rgba(215,230,255,${alpha})` : `rgba(30,30,60,${alpha})`;
 }
 
-// ── Parallax SVG layer ────────────────────────────────────────────────────
-const ParallaxLayer = memo(function ParallaxLayer({
-  stars, layerRef, w, h, isDark,
-}: {
-  stars: Star[];
-  layerRef: React.RefObject<SVGSVGElement | null>;
-  w: number;
-  h: number;
-  isDark: boolean;
-}) {
-  return (
-    <svg
-      ref={layerRef as React.RefObject<SVGSVGElement>}
-      aria-hidden="true"
-      width={w}
-      height={h}
-      className="absolute top-0 left-0 overflow-visible"
-      style={{ willChange: 'transform' }}
-    >
-      {stars.map(s => <StarEl key={s.id} s={s} w={w} h={h} isDark={isDark} />)}
-    </svg>
-  );
-});
+function twinkleAlpha(star: Star, timeMs: number): number {
+  if (!star.twinkle) return star.opacity;
+  const t = (timeMs / 1000 + star.twinkleDelay) / star.twinkleDur;
+  const wave = 0.5 + 0.5 * Math.sin(t * Math.PI * 2);
+  return star.opacity * (0.08 + wave * 0.92);
+}
 
-// ── Main component ────────────────────────────────────────────────────────
+function drawSparkle(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(x, y - r);
+  ctx.lineTo(x + r * 0.35, y - r * 0.35);
+  ctx.lineTo(x + r, y);
+  ctx.lineTo(x + r * 0.35, y + r * 0.35);
+  ctx.lineTo(x, y + r);
+  ctx.lineTo(x - r * 0.35, y + r * 0.35);
+  ctx.lineTo(x - r, y);
+  ctx.lineTo(x - r * 0.35, y - r * 0.35);
+  ctx.closePath();
+  ctx.fill();
+}
+
 export const StarfieldBackground = memo(function StarfieldBackground({ isDark = true }: { isDark?: boolean }) {
-  const refs = [
-    useRef<SVGSVGElement | null>(null),
-    useRef<SVGSVGElement | null>(null),
-    useRef<SVGSVGElement | null>(null),
-  ];
-
-  const rafRef = useRef<number>(0);
+  const { quality } = useVisualQuality();
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const currentY = useRef(0);
   const scrollElRef = useRef<HTMLElement | null>(null);
+  const sizeRef = useRef({ w: window.innerWidth, h: window.innerHeight });
+  const isDarkRef = useRef(isDark);
+  const rafRef = useRef(0);
+  const lastDrawRef = useRef(0);
+  const parallaxActiveRef = useRef(false);
 
-  const [size, setSize] = useState(() => ({
-    w: typeof window !== 'undefined' ? window.innerWidth : 1440,
-    h: typeof window !== 'undefined' ? window.innerHeight : 900,
-  }));
-
-  useEffect(() => {
-    const onResize = () => setSize({ w: window.innerWidth, h: window.innerHeight });
-    window.addEventListener('resize', onResize, { passive: true });
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
+  const qualityRef = useRef(quality);
 
   useEffect(() => {
-    const SELECTORS = ['main', '[data-sidebar="inset"]', '.overflow-auto', '.overflow-y-auto'];
+    qualityRef.current = quality;
+  }, [quality]);
 
-    const getScrollY = (): number => {
-      if (scrollElRef.current && scrollElRef.current.scrollTop > 0) {
-        return scrollElRef.current.scrollTop;
-      }
-      for (const sel of SELECTORS) {
-        const els = document.querySelectorAll(sel);
-        for (const el of els) {
-          const st = (el as HTMLElement).scrollTop;
-          if (st > 0) {
-            scrollElRef.current = el as HTMLElement;
-            return st;
-          }
-        }
-      }
-      return window.scrollY || 0;
+  useEffect(() => {
+    isDarkRef.current = isDark;
+  }, [isDark]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d', { alpha: true });
+    if (!ctx) return;
+
+    const resize = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      sizeRef.current = { w, h };
+      canvas.width = Math.floor(w * dpr);
+      canvas.height = Math.floor(h * dpr);
+      canvas.style.width = `${w}px`;
+      canvas.style.height = `${h}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
 
-    const onScroll = () => {
-      for (const sel of SELECTORS) {
-        const els = document.querySelectorAll(sel);
-        for (const el of els) {
-          const st = (el as HTMLElement).scrollTop;
-          if (st > 0) { scrollElRef.current = el as HTMLElement; return; }
-        }
-      }
-    };
-    document.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    resize();
+    window.addEventListener('resize', resize, { passive: true });
 
-    const tick = () => {
-      const rawY = getScrollY();
+    const draw = (time: number) => {
+      const { w, h } = sizeRef.current;
+      const rawY = getAppScrollY(scrollElRef);
       const diff = rawY - currentY.current;
 
-      if (Math.abs(diff) > 0.05) {
-        currentY.current += diff * 0.10;
-        const y = currentY.current;
-        LAYERS.forEach((cfg, i) => {
-          refs[i].current?.style.setProperty('transform', `translateY(${(y * cfg.speed).toFixed(2)}px)`);
-        });
+      parallaxActiveRef.current = Math.abs(diff) > 0.05;
+      if (parallaxActiveRef.current) {
+        currentY.current += diff * 0.1;
       }
 
+      ctx.clearRect(0, 0, w, h);
+
+      for (const star of ALL_STARS) {
+        const cfg = LAYERS[star.layer];
+        const offsetY = currentY.current * cfg.speed;
+        const px = (star.xPct / 100) * w;
+        const py = (star.yPct / 100) * h + offsetY;
+        const alpha = twinkleAlpha(star, time);
+        ctx.fillStyle = starColor(star, isDarkRef.current, alpha);
+        drawSparkle(ctx, px, py, star.r);
+      }
+    };
+
+    const schedule = () => {
+      if (rafRef.current) return;
       rafRef.current = requestAnimationFrame(tick);
     };
 
-    rafRef.current = requestAnimationFrame(tick);
+    const tick = (time: number) => {
+      rafRef.current = 0;
+
+      if (document.visibilityState === 'hidden') return;
+
+      const twinkleInterval = qualityRef.current === 'balanceada'
+        ? TWINKLE_INTERVAL_BALANCEADA_MS
+        : TWINKLE_INTERVAL_ALTA_MS;
+      const minInterval = parallaxActiveRef.current ? 0 : twinkleInterval;
+      if (minInterval > 0 && time - lastDrawRef.current < minInterval) {
+        if (HAS_TWINKLE) schedule();
+        return;
+      }
+
+      draw(time);
+      lastDrawRef.current = time;
+
+      if (parallaxActiveRef.current || HAS_TWINKLE) {
+        schedule();
+      }
+    };
+
+    const wake = () => schedule();
+    document.addEventListener('scroll', wake, { capture: true, passive: true });
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') schedule();
+      else if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = 0;
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    const unbindScroll = bindScrollWake({ start: schedule, stop: () => {}, wake: schedule, cleanup: () => {} }, scrollElRef);
+    schedule();
 
     return () => {
-      document.removeEventListener('scroll', onScroll, { capture: true });
-      cancelAnimationFrame(rafRef.current);
+      window.removeEventListener('resize', resize);
+      document.removeEventListener('scroll', wake, { capture: true });
+      document.removeEventListener('visibilitychange', onVisibility);
+      unbindScroll();
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const { w, h } = size;
+  }, []);
 
   return (
-    <>
-      <style>{`
-        @keyframes arrow-twinkle {
-          0%   { opacity: 1; }
-          100% { opacity: 0.08; }
-        }
-      `}</style>
-
-      <div
-        aria-hidden="true"
-        className="pointer-events-none fixed inset-0 z-0 overflow-hidden"
-      >
-        {STAR_DEFS.map((stars, i) => (
-          <ParallaxLayer key={i} stars={stars} layerRef={refs[i]} w={w} h={h} isDark={isDark} />
-        ))}
-      </div>
-    </>
+    <canvas
+      ref={canvasRef}
+      aria-hidden="true"
+      className="pointer-events-none fixed inset-0 z-0"
+      style={{ contain: 'strict', transform: 'translateZ(0)' }}
+    />
   );
 });

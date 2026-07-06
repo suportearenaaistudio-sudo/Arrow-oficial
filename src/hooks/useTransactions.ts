@@ -1,37 +1,29 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
+import { desktopAPI } from '@/lib/desktop-api';
+import { useVault } from '@/contexts/VaultContext';
 import { useNotification } from './useNotification';
 import type { Transaction } from '@/types/arrow';
 
-export function useTransactions(period?: { start: string; end: string }) {
-  const { user } = useAuth();
+export function useTransactions(filters?: { startDate?: string; endDate?: string }) {
+  const { profile } = useVault();
   const queryClient = useQueryClient();
   const { showSuccess, showError } = useNotification();
 
   const query = useQuery({
-    queryKey: ['transactions', user?.id, period],
-    queryFn: async () => {
-      let q = supabase.from('transactions').select('*').order('date', { ascending: false });
-      if (period?.start) q = q.gte('date', period.start);
-      if (period?.end) q = q.lte('date', period.end);
-      const { data, error } = await q;
-      if (error) throw error;
-      return (data || []) as unknown as Transaction[];
-    },
-    enabled: !!user,
+    queryKey: ['transactions', profile?.id, filters],
+    queryFn: () => desktopAPI.db.transactions.list(filters) as Promise<Transaction[]>,
+    enabled: !!profile,
     retry: false,
   });
 
+  const transactions = query.data || [];
+  const receitas = transactions.filter(t => t.type === 'receita');
+  const despesas = transactions.filter(t => t.type === 'despesa');
+  const saldo = receitas.reduce((s, t) => s + t.amount, 0) - despesas.reduce((s, t) => s + t.amount, 0);
+
   const createTransaction = useMutation({
-    mutationFn: async (t: Partial<Transaction>) => {
-      const { data, error } = await supabase
-        .from('transactions')
-        .insert({ ...t, user_id: user!.id } as any)
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
+    mutationFn: async (tx: Partial<Transaction>) => {
+      return desktopAPI.db.transactions.create(tx) as Promise<Transaction>;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
@@ -42,8 +34,7 @@ export function useTransactions(period?: { start: string; end: string }) {
 
   const deleteTransaction = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('transactions').delete().eq('id', id);
-      if (error) throw error;
+      await desktopAPI.db.transactions.delete(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
@@ -52,17 +43,9 @@ export function useTransactions(period?: { start: string; end: string }) {
     onError: () => showError('Erro ao excluir transação'),
   });
 
-  const transactions = query.data || [];
-  const receitas = transactions.filter(t => t.type === 'receita').reduce((s, t) => s + Number(t.amount), 0);
-  const despesas = transactions.filter(t => t.type === 'despesa').reduce((s, t) => s + Number(t.amount), 0);
-
   return {
-    transactions,
+    transactions, receitas, despesas, saldo,
     isLoading: query.isLoading,
-    receitas,
-    despesas,
-    saldo: receitas - despesas,
-    createTransaction,
-    deleteTransaction,
+    createTransaction, deleteTransaction,
   };
 }

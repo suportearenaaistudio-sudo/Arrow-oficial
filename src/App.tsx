@@ -1,14 +1,16 @@
+import { LazyMotion, domAnimation } from 'framer-motion';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { VaultProvider } from "@/contexts/VaultContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+import { VisualQualityProvider } from "@/contexts/VisualQualityContext";
 import { RainSoundProvider } from "@/contexts/RainSoundContext";
 import AppLayout from "@/components/layout/AppLayout";
 
 // Pages
-import Auth from "./pages/Auth";
+import VaultSetup from "./pages/VaultSetup";
 import Dashboard from "./pages/Dashboard";
 import Planning from "./pages/Planning";
 import Cycles from "./pages/Cycles";
@@ -28,14 +30,16 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <Sonner position="top-right" />
-      <AuthProvider>
+      <VaultProvider>
         <ThemeProvider>
+        <VisualQualityProvider>
         <RainSoundProvider>
+        <Sonner position="top-right" />
+        <LazyMotion features={domAnimation}>
         <BrowserRouter>
           <Routes>
             {/* Public */}
-            <Route path="/auth" element={<Auth />} />
+            <Route path="/setup" element={<VaultSetup />} />
 
             {/* Protected (inside AppLayout) */}
             <Route element={<AppLayout />}>
@@ -57,9 +61,11 @@ const App = () => (
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
+        </LazyMotion>
         </RainSoundProvider>
+        </VisualQualityProvider>
         </ThemeProvider>
-      </AuthProvider>
+      </VaultProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );

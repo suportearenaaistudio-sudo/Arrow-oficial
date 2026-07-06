@@ -14,6 +14,21 @@ O app integra em um único lugar: **ciclos, metas, tarefas, hábitos, finanças,
 
 ## 2. Stack Tecnológico
 
+### Desktop (Arrow 2 — Tauri)
+
+| Camada | Tecnologia |
+|--------|-----------|
+| **Shell** | Tauri 2 (WKWebView nativo no macOS) |
+| **Backend local** | Rust (`src-tauri/`) — vault, SQLite, notas |
+| **Banco local** | rusqlite (WAL) em `.arrow/arrow.db` |
+| **Vault** | Formato v2 portável (`config.version: 2`) — pastas `notes/`, `attachments/`, `.arrow/` |
+| **API frontend** | `@tauri-apps/api` → `invoke()` via `src/lib/desktop-api.ts` |
+| **Dev** | `npm run dev:desktop` · **Build** | `npm run build:desktop` |
+
+Vaults do Arrow 1 (Electron, `config.version: 1`) **não são compatíveis**. Estado do app em `~/Library/Application Support/com.arrow.app/`.
+
+### Frontend compartilhado
+
 | Camada | Tecnologia |
 |--------|-----------|
 | **Frontend** | React 18 + TypeScript + Vite |

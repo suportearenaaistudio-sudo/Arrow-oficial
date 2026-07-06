@@ -1,5 +1,4 @@
-// RainBackground.tsx — Visual rain effect only (sound managed by RainSoundContext)
-// Canvas: drops, splashes, lightning
+// RainBackground.tsx — Visual rain effect (optimized canvas loop)
 
 import { useEffect, useRef, memo, useCallback } from 'react';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -63,6 +62,11 @@ export const RainBackground = memo(function RainBackground() {
   const { theme } = useTheme();
   const density = theme.rainDensity ?? 1;
   const isDark = theme.isDark;
+  const isDarkRef = useRef(isDark);
+
+  useEffect(() => {
+    isDarkRef.current = isDark;
+  }, [isDark]);
 
   const initDrops = useCallback((w: number, h: number) => {
     const drops: Drop[] = [];
@@ -73,42 +77,51 @@ export const RainBackground = memo(function RainBackground() {
         y: Math.random() * h,
         speed: (8 + Math.random() * 8) * (0.6 + density * 0.4),
         length: (10 + Math.random() * 15) * (0.7 + density * 0.3),
-        opacity: (0.1 + Math.random() * 0.25) * (isDark ? 1 : 0.5),
+        opacity: (0.1 + Math.random() * 0.25) * (isDarkRef.current ? 1 : 0.5),
       });
     }
     dropsRef.current = drops;
-  }, [density, isDark]);
+  }, [density]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d')!;
-
-    function resize() {
-      canvas!.width = window.innerWidth;
-      canvas!.height = window.innerHeight;
-      initDrops(canvas!.width, canvas!.height);
-    }
-    resize();
-    window.addEventListener('resize', resize);
-
     let time = 0;
-
-    // Card rects cache (updated every 500ms for performance)
     let cardRects: DOMRect[] = [];
     let lastCardScan = 0;
 
-    function scanCards() {
-      const cards = document.querySelectorAll('.arrow-card');
-      cardRects = Array.from(cards).map(el => el.getBoundingClientRect());
+    function resize() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      canvas!.width = Math.floor(w * dpr);
+      canvas!.height = Math.floor(h * dpr);
+      canvas!.style.width = `${w}px`;
+      canvas!.style.height = `${h}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      initDrops(w, h);
     }
 
-    function draw() {
-      const w = canvas!.width;
-      const h = canvas!.height;
+    function scanCards() {
+      const cards = document.querySelectorAll('.arrow-card');
+      cardRects = Array.from(cards).map((el) => el.getBoundingClientRect());
+    }
+
+    function schedule() {
+      if (rafRef.current) return;
+      rafRef.current = requestAnimationFrame(draw);
+    }
+
+    function draw(now: number) {
+      rafRef.current = 0;
+
+      if (document.visibilityState === 'hidden') return;
+
+      const w = window.innerWidth;
+      const h = window.innerHeight;
       time += 16;
 
-      // Scan card positions periodically
       if (time - lastCardScan > 500) {
         scanCards();
         lastCardScan = time;
@@ -118,8 +131,8 @@ export const RainBackground = memo(function RainBackground() {
 
       const drops = dropsRef.current;
       const splashes = splashesRef.current;
+      const dark = isDarkRef.current;
 
-      // Lightning
       const lightning = lightningRef.current;
       if (lightning) {
         const elapsed = time - lightning.startTime;
@@ -135,8 +148,7 @@ export const RainBackground = memo(function RainBackground() {
           const forkAlpha = lightning.intensity * Math.max(0, 1 - progress * 1.5);
           if (forkAlpha > 0.05) {
             ctx.strokeStyle = `rgba(200, 210, 255, ${forkAlpha})`;
-            ctx.shadowColor = `rgba(150, 170, 255, ${forkAlpha * 0.8})`;
-            ctx.shadowBlur = 15;
+            ctx.lineWidth = 1.5;
             for (const b of lightning.branches) {
               ctx.lineWidth = b.width;
               ctx.beginPath();
@@ -144,14 +156,12 @@ export const RainBackground = memo(function RainBackground() {
               ctx.lineTo(b.x2, b.y2);
               ctx.stroke();
             }
-            ctx.shadowBlur = 0;
           }
         } else {
           lightningRef.current = null;
         }
       }
 
-      // Trigger lightning every 6-15s
       if (time - lastLightningRef.current > 6000 + Math.random() * 9000) {
         const forkX = w * 0.15 + Math.random() * w * 0.7;
         lightningRef.current = {
@@ -162,20 +172,17 @@ export const RainBackground = memo(function RainBackground() {
         };
         lastLightningRef.current = time;
 
-        // Trigger thunder sound (not in sutil mode)
         const currentIntensity = localStorage.getItem('arrow-rain-intensity') || 'off';
         if (currentIntensity !== 'sutil') {
-          const playThunder = (window as any).__playThunder;
+          const playThunder = (window as Window & { __playThunder?: () => void }).__playThunder;
           if (playThunder) {
             setTimeout(playThunder, 200 + Math.random() * 1200);
           }
         }
       }
 
-      const dropColor = isDark ? '160, 185, 220' : '80, 100, 140';
-      const splashColor = isDark ? '160, 185, 220' : '80, 100, 140';
-
-      // Rain drops
+      const dropColor = dark ? '160, 185, 220' : '80, 100, 140';
+      const splashColor = dropColor;
       const windAngle = 0.12;
       ctx.lineCap = 'round';
 
@@ -184,7 +191,6 @@ export const RainBackground = memo(function RainBackground() {
         drop.y += drop.speed;
         drop.x += drop.speed * windAngle;
 
-        // Check collision with card tops (subtle splashes)
         for (const rect of cardRects) {
           const cardTop = rect.top;
           if (
@@ -192,7 +198,6 @@ export const RainBackground = memo(function RainBackground() {
             drop.x >= rect.left - 5 && drop.x <= rect.right + 5 &&
             splashes.length < 250
           ) {
-            // Micro-splash on card surface (subtle)
             const count = 1 + Math.floor(Math.random() * 2);
             for (let s = 0; s < count; s++) {
               splashes.push({
@@ -205,14 +210,12 @@ export const RainBackground = memo(function RainBackground() {
                 size: 0.3 + Math.random() * 0.5,
               });
             }
-            // Reset drop after hitting card
             drop.y = -drop.length - Math.random() * 100;
             drop.x = Math.random() * w;
             break;
           }
         }
 
-        // Bottom splash
         if (drop.y > h + 10) {
           if (splashes.length < 250) {
             const splashCount = 2 + Math.floor(Math.random() * 3);
@@ -241,7 +244,6 @@ export const RainBackground = memo(function RainBackground() {
         ctx.stroke();
       }
 
-      // Splashes
       for (let i = splashes.length - 1; i >= 0; i--) {
         const sp = splashes[i];
         sp.x += sp.vx;
@@ -261,14 +263,27 @@ export const RainBackground = memo(function RainBackground() {
         ctx.fill();
       }
 
-      rafRef.current = requestAnimationFrame(draw);
+      schedule();
     }
 
-    rafRef.current = requestAnimationFrame(draw);
+    resize();
+    window.addEventListener('resize', resize);
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') schedule();
+      else if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = 0;
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    schedule();
 
     return () => {
       window.removeEventListener('resize', resize);
-      cancelAnimationFrame(rafRef.current);
+      document.removeEventListener('visibilitychange', onVisibility);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, [initDrops]);
 
@@ -277,7 +292,7 @@ export const RainBackground = memo(function RainBackground() {
       ref={canvasRef}
       aria-hidden="true"
       className="pointer-events-none fixed inset-0 z-[1]"
-      style={{ background: 'transparent' }}
+      style={{ background: 'transparent', contain: 'strict', transform: 'translateZ(0)' }}
     />
   );
 });

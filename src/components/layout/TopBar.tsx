@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
+import { useVault } from '@/contexts/VaultContext';
 import { useSidebar } from '@/contexts/SidebarContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import {
@@ -16,7 +16,7 @@ const quickActions = [
 
 export default function TopBar() {
   const navigate = useNavigate();
-  const { profile, signOut } = useAuth();
+  const { profile, closeVault, vaultPath } = useVault();
   const { collapsed, toggle } = useSidebar();
   const { theme, isDark } = useTheme();
   const [profileOpen, setProfileOpen] = useState(false);
@@ -169,7 +169,7 @@ export default function TopBar() {
             >
               <div className="px-3 py-2.5" style={{ borderBottom: `1px solid ${theme.border}` }}>
                 <p className="text-sm font-semibold" style={{ color: theme.textPrimary }}>{profile?.full_name}</p>
-                <p className="text-[11px]" style={{ color: theme.textMuted }}>{profile?.email}</p>
+                <p className="text-[11px] truncate max-w-[180px]" style={{ color: theme.textMuted }} title={vaultPath || ''}>{vaultPath?.split('/').pop() || 'Vault'}</p>
               </div>
               <button
                 onClick={() => { navigate('/settings'); setProfileOpen(false); }}
@@ -181,12 +181,12 @@ export default function TopBar() {
                 <Settings className="w-3.5 h-3.5" /> Configuracoes
               </button>
               <button
-                onClick={() => signOut()}
+                onClick={() => closeVault()}
                 className="w-full text-left px-3 py-2 text-sm text-red-500 transition-colors flex items-center gap-2"
                 onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239,68,68,0.06)')}
                 onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
               >
-                <LogOut className="w-3.5 h-3.5" /> Sair
+                <LogOut className="w-3.5 h-3.5" /> Fechar vault
               </button>
             </div>
           </>

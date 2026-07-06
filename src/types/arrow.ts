@@ -125,7 +125,7 @@ export interface HabitCompletion {
 
 export interface Profile {
   id: string;
-  email: string;
+  email?: string;
   full_name?: string;
   role: UserRole;
   avatar_url?: string;
@@ -240,6 +240,8 @@ export interface Note {
   title: string;
   content?: string;
   tags: string[];
+  folder?: string;
+  file_path?: string;
   created_at: string;
   updated_at: string;
 }

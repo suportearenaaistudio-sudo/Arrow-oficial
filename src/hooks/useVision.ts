@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
+import { desktopAPI } from '@/lib/desktop-api';
+import { useVault } from '@/contexts/VaultContext';
 
 export interface Vision {
   id: string;
@@ -24,32 +24,20 @@ export const VISION_AREAS: { key: VisionArea; label: string; emoji: string; plac
 ];
 
 export function useVision() {
-  const { user } = useAuth();
+  const { profile } = useVault();
   const qc = useQueryClient();
 
   const { data: vision, isLoading } = useQuery({
-    queryKey: ['vision', user?.id],
+    queryKey: ['vision', profile?.id],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from('visions')
-        .select('*')
-        .maybeSingle();
-      if (error) throw error;
-      return data as Vision | null;
+      return desktopAPI.db.vision.get() as Promise<Vision | null>;
     },
-    enabled: !!user,
+    enabled: !!profile,
   });
 
   const saveVision = useMutation({
     mutationFn: async (updates: Partial<Omit<Vision, 'id' | 'user_id' | 'updated_at'>>) => {
-      const payload = { ...updates, user_id: user!.id, updated_at: new Date().toISOString() };
-      const { data, error } = await (supabase as any)
-        .from('visions')
-        .upsert(payload, { onConflict: 'user_id' })
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
+      return desktopAPI.db.vision.save(updates) as Promise<Vision>;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['vision'] }),
   });

@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { Settings as SettingsIcon, User, Download, Trash2, LogOut, Shield, Globe, Palette, Check, Sun, Moon, Stars, Camera, Loader2, CloudRain, Volume2, Volume1, Volume, VolumeX } from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
+import { useVault } from '@/contexts/VaultContext';
 import { useTheme, THEMES, ThemeId } from '@/contexts/ThemeContext';
 import { useNotification } from '@/hooks/useNotification';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
@@ -21,15 +21,23 @@ const themeIcons: Record<ThemeId, React.ReactNode> = {
 };
 
 import { useState, useRef } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import AvatarCropper from '@/components/ui/AvatarCropper';
 import { useRainSound, RainIntensity } from '@/contexts/RainSoundContext';
+import { useVisualQuality } from '@/contexts/VisualQualityContext';
+import type { VisualQuality } from '@/lib/platform';
 
 export default function Settings() {
-  const { user, profile, signOut, updateProfile, refreshProfile } = useAuth();
+  const { profile, updateProfile, closeVault, vaultPath, saveAvatar } = useVault();
   const { theme, themeId, setTheme, isDark } = useTheme();
   const { showSuccess, showInfo, showError } = useNotification();
   const { intensity: rainIntensity, setIntensity: setRainIntensity, isPlaying: rainIsPlaying } = useRainSound();
+  const { quality: visualQuality, setQuality: setVisualQuality } = useVisualQuality();
+
+  const visualQualityOptions: { id: VisualQuality; label: string; desc: string }[] = [
+    { id: 'alta', label: 'Alta', desc: 'Efeitos completos otimizados' },
+    { id: 'balanceada', label: 'Balanceada', desc: 'Mesmos efeitos, menor taxa de atualização' },
+    { id: 'economia', label: 'Economia', desc: 'Sem starfield/chuva (bateria)' },
+  ];
 
   const [editName, setEditName] = useState(profile?.full_name || '');
   const [saving, setSaving] = useState(false);
@@ -71,40 +79,17 @@ export default function Settings() {
 
   async function handleCropped(blob: Blob) {
     setCropFile(null);
-    if (!user) return;
-
     setUploading(true);
-    try {
-      const path = `${user.id}/avatar.webp`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(path, blob, { upsert: true, contentType: 'image/webp' });
-
-      if (uploadError) {
-        console.error('Upload error:', uploadError);
-        showError('Erro ao enviar foto. Verifique se o bucket "avatars" existe no Supabase.');
-        setUploading(false);
-        return;
-      }
-
-      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
-      const avatarUrl = urlData.publicUrl + '?t=' + Date.now();
-
-      const result = await updateProfile({ avatar_url: avatarUrl });
-      if (result.error) {
-        showError('Erro ao atualizar avatar');
-      } else {
-        showSuccess('Foto atualizada!');
-      }
-    } catch (err) {
-      console.error(err);
-      showError('Erro inesperado no upload');
-    }
+    const result = await saveAvatar(blob);
     setUploading(false);
+    if (result.error) {
+      showError(result.error);
+    } else {
+      showSuccess('Foto atualizada!');
+    }
   }
 
-  const initials = (profile?.full_name || user?.email || 'U').slice(0, 2).toUpperCase();
+  const initials = (profile?.full_name || 'U').slice(0, 2).toUpperCase();
 
   return (
     <>
@@ -164,8 +149,8 @@ export default function Settings() {
               />
             </div>
             <div>
-              <label className="text-xs font-medium mb-1 block" style={{ color: 'var(--arrow-text-muted)' }}>Email</label>
-              <p className="text-sm px-3 py-2" style={{ color: 'var(--arrow-text-secondary)' }}>{user?.email}</p>
+              <label className="text-xs font-medium mb-1 block" style={{ color: 'var(--arrow-text-muted)' }}>Vault</label>
+              <p className="text-sm px-3 py-2 break-all" style={{ color: 'var(--arrow-text-secondary)' }}>{vaultPath || '—'}</p>
             </div>
             <button
               onClick={handleSaveProfile}
@@ -243,6 +228,43 @@ export default function Settings() {
                   )}
                 </div>
               </motion.button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Visual quality */}
+      <div className="arrow-card p-6 mb-4">
+        <h3 className="font-semibold flex items-center gap-2 mb-2" style={{ color: 'var(--arrow-text-primary)' }}>
+          <Stars className="w-5 h-5" style={{ color: 'var(--arrow-accent)' }} /> Qualidade Visual
+        </h3>
+        <p className="text-xs mb-4" style={{ color: 'var(--arrow-text-muted)' }}>
+          Ajuste o nível de efeitos animados. Alta é o padrão recomendado.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {visualQualityOptions.map((opt) => {
+            const isActive = visualQuality === opt.id;
+            return (
+              <button
+                key={opt.id}
+                onClick={() => {
+                  setVisualQuality(opt.id);
+                  showSuccess(`Qualidade "${opt.label}" aplicada`);
+                }}
+                className="relative p-4 rounded-2xl text-left transition-all duration-200"
+                style={{
+                  background: isActive ? 'var(--arrow-accent-light)' : 'var(--arrow-bg-card)',
+                  border: `2px solid ${isActive ? 'var(--arrow-accent)' : 'var(--arrow-border)'}`,
+                }}
+              >
+                <p className="text-xs font-semibold" style={{ color: 'var(--arrow-text-primary)' }}>{opt.label}</p>
+                <p className="text-[10px] mt-1" style={{ color: 'var(--arrow-text-muted)' }}>{opt.desc}</p>
+                {isActive && (
+                  <div className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: 'var(--arrow-accent)' }}>
+                    <Check className="w-2.5 h-2.5" style={{ color: '#0B0B0B' }} />
+                  </div>
+                )}
+              </button>
             );
           })}
         </div>
@@ -331,23 +353,23 @@ export default function Settings() {
           <Shield className="w-5 h-5 text-red-500" /> Seguranca e Conta
         </h3>
         <div className="space-y-3">
-          <button onClick={() => signOut()} className="flex items-center gap-2 text-sm transition-colors" style={{ color: 'var(--arrow-text-secondary)' }}>
-            <LogOut className="w-4 h-4" /> Sair da conta
+          <button onClick={() => closeVault()} className="flex items-center gap-2 text-sm transition-colors" style={{ color: 'var(--arrow-text-secondary)' }}>
+            <LogOut className="w-4 h-4" /> Fechar vault
           </button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <button className="flex items-center gap-2 text-sm text-red-500 hover:text-red-700 transition-colors">
-                <Trash2 className="w-4 h-4" /> Excluir conta permanentemente
+                <Trash2 className="w-4 h-4" /> Sobre exclusão de dados
               </button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Excluir conta?</AlertDialogTitle>
-                <AlertDialogDescription>Esta acao e irreversivel. Todos os seus dados serao excluidos permanentemente.</AlertDialogDescription>
+                <AlertDialogTitle>Fechar vault?</AlertDialogTitle>
+                <AlertDialogDescription>Isso fecha o vault atual. Seus dados permanecem na pasta. Para remover tudo, apague a pasta do vault no Finder.</AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                <AlertDialogAction className="bg-red-500 hover:bg-red-600">Confirmar Exclusao</AlertDialogAction>
+                <AlertDialogAction className="bg-red-500 hover:bg-red-600">Entendi</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>

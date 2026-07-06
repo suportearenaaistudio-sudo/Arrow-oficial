@@ -1,37 +1,24 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
+import { desktopAPI } from '@/lib/desktop-api';
+import { useVault } from '@/contexts/VaultContext';
 import { useNotification } from './useNotification';
 import type { Task, TaskStatus } from '@/types/arrow';
 
 export function useTasks() {
-  const { user } = useAuth();
+  const { profile } = useVault();
   const queryClient = useQueryClient();
   const { showSuccess, showError } = useNotification();
 
   const tasksQuery = useQuery({
-    queryKey: ['tasks', user?.id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('tasks')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return (data || []) as unknown as Task[];
-    },
-    enabled: !!user,
+    queryKey: ['tasks', profile?.id],
+    queryFn: () => desktopAPI.db.tasks.list() as Promise<Task[]>,
+    enabled: !!profile,
     retry: false,
   });
 
   const createTask = useMutation({
     mutationFn: async (task: Partial<Task>) => {
-      const { data, error } = await supabase
-        .from('tasks')
-        .insert({ ...task, user_id: user!.id } as any)
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
+      return desktopAPI.db.tasks.create(task) as Promise<Task>;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
@@ -42,9 +29,7 @@ export function useTasks() {
 
   const updateTask = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Task> & { id: string }) => {
-      const { data, error } = await supabase.from('tasks').update(updates as any).eq('id', id).select().single();
-      if (error) throw error;
-      return data;
+      return desktopAPI.db.tasks.update({ id, ...updates }) as Promise<Task>;
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
@@ -61,8 +46,7 @@ export function useTasks() {
       if (status === 'concluida') {
         updates.completion_date = new Date().toISOString().split('T')[0];
       }
-      const { error } = await supabase.from('tasks').update(updates as any).eq('id', id);
-      if (error) throw error;
+      await desktopAPI.db.tasks.update({ id, ...updates });
     },
     onSuccess: (_, { status }) => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
@@ -73,8 +57,7 @@ export function useTasks() {
 
   const deleteTask = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('tasks').delete().eq('id', id);
-      if (error) throw error;
+      await desktopAPI.db.tasks.delete(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
@@ -83,15 +66,16 @@ export function useTasks() {
     onError: () => showError('Erro ao excluir tarefa'),
   });
 
-  // Vincula tarefa existente a ciclo + semana + meta
   const linkTask = useMutation({
     mutationFn: async ({ id, cycle_id, week_number, goal_id }: {
       id: string; cycle_id?: string; week_number?: number; goal_id?: string;
     }) => {
-      const { error } = await supabase.from('tasks')
-        .update({ cycle_id: cycle_id ?? null, week_number: week_number ?? null, goal_id: goal_id ?? null } as any)
-        .eq('id', id);
-      if (error) throw error;
+      await desktopAPI.db.tasks.update({
+        id,
+        cycle_id: cycle_id ?? null,
+        week_number: week_number ?? null,
+        goal_id: goal_id ?? null,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
@@ -121,7 +105,6 @@ export function useTasks() {
     return tasks.filter(t => t.cycle_id === cycleId);
   }
 
-  // Score de execução em tempo real (%)
   function getWeekScore(cycleId: string, weekNumber: number) {
     const weekTasks = getTasksByWeek(cycleId, weekNumber);
     if (weekTasks.length === 0) return null;

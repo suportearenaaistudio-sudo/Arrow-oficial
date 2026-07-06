@@ -1,70 +1,48 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
-import { useNotification } from './useNotification';
+import { desktopAPI } from '@/lib/desktop-api';
+import { useVault } from '@/contexts/VaultContext';
 import type { DailyCheckin } from '@/types/arrow';
 
 export function useDailyCheckin() {
-  const { user } = useAuth();
+  const { profile } = useVault();
   const queryClient = useQueryClient();
-  const { showSuccess, showError } = useNotification();
   const today = new Date().toISOString().split('T')[0];
 
-  const todayCheckin = useQuery({
-    queryKey: ['daily-checkin', user?.id, today],
+  const todayQuery = useQuery({
+    queryKey: ['daily-checkin', profile?.id, today],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('daily_checkins')
-        .select('*')
-        .eq('date', today)
-        .maybeSingle();
-      if (error) throw error;
-      return data as unknown as DailyCheckin | null;
+      const data = await desktopAPI.db.checkins.getByDate(today);
+      return data as DailyCheckin | null;
     },
-    enabled: !!user,
+    enabled: !!profile,
     retry: false,
   });
 
-  const allCheckins = useQuery({
-    queryKey: ['daily-checkins', user?.id],
+  const allQuery = useQuery({
+    queryKey: ['daily-checkins', profile?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('daily_checkins')
-        .select('*')
-        .order('date', { ascending: false })
-        .limit(90);
-      if (error) throw error;
-      return (data || []) as unknown as DailyCheckin[];
+      return desktopAPI.db.checkins.list() as Promise<DailyCheckin[]>;
     },
-    enabled: !!user,
+    enabled: !!profile,
     retry: false,
   });
 
   const saveCheckin = useMutation({
     mutationFn: async (checkin: Partial<DailyCheckin>) => {
-      const existing = todayCheckin.data;
-      if (existing) {
-        const { error } = await supabase.from('daily_checkins').update(checkin as any).eq('id', existing.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from('daily_checkins')
-          .insert({ ...checkin, user_id: user!.id, date: today } as any);
-        if (error) throw error;
-      }
+      return desktopAPI.db.checkins.upsert({ ...checkin, date: today }) as Promise<DailyCheckin>;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['daily-checkin'] });
       queryClient.invalidateQueries({ queryKey: ['daily-checkins'] });
-      showSuccess('Check-in salvo!');
     },
-    onError: () => showError('Erro ao salvar check-in'),
   });
 
   return {
-    todayCheckin: todayCheckin.data,
-    allCheckins: allCheckins.data || [],
-    isLoading: todayCheckin.isLoading,
+    todayCheckin: todayQuery.data,
+    allCheckins: allQuery.data || [],
+    isLoading: todayQuery.isLoading || allQuery.isLoading,
+    upsertCheckin: saveCheckin,
     saveCheckin,
+    hasCheckedInToday: !!todayQuery.data,
   };
 }

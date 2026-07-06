@@ -1,39 +1,24 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
+import { desktopAPI } from '@/lib/desktop-api';
+import { useVault } from '@/contexts/VaultContext';
 import { useNotification } from './useNotification';
 import type { Goal } from '@/types/arrow';
 
 export function useGoals(filters?: { category?: string; status?: string; search?: string; cycleId?: string }) {
-  const { user } = useAuth();
+  const { profile } = useVault();
   const queryClient = useQueryClient();
   const { showSuccess, showError } = useNotification();
 
   const goalsQuery = useQuery({
-    queryKey: ['goals', user?.id, filters],
-    queryFn: async () => {
-      let query = supabase.from('goals').select('*').order('updated_at', { ascending: false });
-      if (filters?.category) query = query.eq('category', filters.category as any);
-      if (filters?.status) query = query.eq('status', filters.status as any);
-      if (filters?.cycleId) query = query.eq('cycle_id', filters.cycleId);
-      if (filters?.search) query = query.ilike('title', `%${filters.search}%`);
-      const { data, error } = await query;
-      if (error) throw error;
-      return (data || []) as unknown as Goal[];
-    },
-    enabled: !!user,
+    queryKey: ['goals', profile?.id, filters],
+    queryFn: () => desktopAPI.db.goals.list(filters) as Promise<Goal[]>,
+    enabled: !!profile,
     retry: false,
   });
 
   const createGoal = useMutation({
     mutationFn: async (goal: Partial<Goal>) => {
-      const { data, error } = await supabase
-        .from('goals')
-        .insert({ ...goal, user_id: user!.id } as any)
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
+      return desktopAPI.db.goals.create(goal) as Promise<Goal>;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['goals'] });
@@ -44,20 +29,15 @@ export function useGoals(filters?: { category?: string; status?: string; search?
 
   const updateGoal = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Goal> & { id: string }) => {
-      const { data, error } = await supabase.from('goals').update(updates as any).eq('id', id).select().single();
-      if (error) throw error;
-      return data;
+      return desktopAPI.db.goals.update({ id, ...updates }) as Promise<Goal>;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['goals'] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['goals'] }),
     onError: () => showError('Erro ao atualizar meta'),
   });
 
   const deleteGoal = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('goals').delete().eq('id', id);
-      if (error) throw error;
+      await desktopAPI.db.goals.delete(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['goals'] });

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
+import { desktopAPI } from '@/lib/desktop-api';
+import { useVault } from '@/contexts/VaultContext';
 
 export interface WeeklyScore {
   id: string;
@@ -28,45 +28,26 @@ export interface FinalizeWeekPayload {
 }
 
 export function useWeeklyScores(cycleId?: string) {
-  const { user } = useAuth();
+  const { profile } = useVault();
   const qc = useQueryClient();
 
   const { data: scores = [], isLoading } = useQuery({
     queryKey: ['weekly-scores', cycleId],
     queryFn: async () => {
-      const query = (supabase as any)
-        .from('weekly_scores')
-        .select('*')
-        .order('week_number', { ascending: true });
-      if (cycleId) query.eq('cycle_id', cycleId);
-      const { data, error } = await query;
-      if (error) throw error;
-      return data as WeeklyScore[];
+      return desktopAPI.db.weeklyScores.list(cycleId) as Promise<WeeklyScore[]>;
     },
-    enabled: !!user,
+    enabled: !!profile,
   });
 
-  // Score médio do ciclo (somente semanas finalizadas)
   const avgScore = scores.length > 0
     ? Math.round(scores.reduce((sum, s) => sum + (s.score ?? 0), 0) / scores.length)
     : 0;
 
-  // Último score disponível
   const lastScore = scores.at(-1);
 
   const finalizeWeek = useMutation({
     mutationFn: async (payload: FinalizeWeekPayload) => {
-      const { data, error } = await (supabase as any)
-        .from('weekly_scores')
-        .upsert({
-          ...payload,
-          user_id: user!.id,
-          finalized_at: new Date().toISOString(),
-        }, { onConflict: 'user_id,cycle_id,week_number' })
-        .select()
-        .single();
-      if (error) throw error;
-      return data as WeeklyScore;
+      return desktopAPI.db.weeklyScores.finalize(payload) as Promise<WeeklyScore>;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['weekly-scores'] });
@@ -74,7 +55,6 @@ export function useWeeklyScores(cycleId?: string) {
     },
   });
 
-  // Verifica se a semana já foi finalizada
   function isWeekFinalized(weekNumber: number) {
     return scores.some(s => s.week_number === weekNumber && s.finalized_at);
   }
@@ -83,7 +63,6 @@ export function useWeeklyScores(cycleId?: string) {
     return scores.find(s => s.week_number === weekNumber) ?? null;
   }
 
-  // Cor do score
   function scoreColor(score: number) {
     if (score >= 85) return 'text-green-500';
     if (score >= 70) return 'text-yellow-500';

@@ -1,30 +1,24 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
+import { desktopAPI } from '@/lib/desktop-api';
+import { useVault } from '@/contexts/VaultContext';
 import { useNotification } from './useNotification';
 import type { Note } from '@/types/arrow';
 
 export function useNotes() {
-  const { user } = useAuth();
+  const { profile } = useVault();
   const queryClient = useQueryClient();
   const { showSuccess, showError } = useNotification();
 
   const query = useQuery({
-    queryKey: ['notes', user?.id],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('notes').select('*').order('updated_at', { ascending: false });
-      if (error) throw error;
-      return (data || []) as unknown as Note[];
-    },
-    enabled: !!user,
+    queryKey: ['notes', profile?.id],
+    queryFn: () => desktopAPI.notes.list() as Promise<Note[]>,
+    enabled: !!profile,
     retry: false,
   });
 
   const createNote = useMutation({
-    mutationFn: async (note: Partial<Note>) => {
-      const { data, error } = await supabase.from('notes').insert({ ...note, user_id: user!.id } as any).select().single();
-      if (error) throw error;
-      return data;
+    mutationFn: async (note: Partial<Note> & { folder?: string }) => {
+      return desktopAPI.notes.create(note) as Promise<Note>;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notes'] });
@@ -34,9 +28,8 @@ export function useNotes() {
   });
 
   const updateNote = useMutation({
-    mutationFn: async ({ id, ...updates }: Partial<Note> & { id: string }) => {
-      const { error } = await supabase.from('notes').update(updates as any).eq('id', id);
-      if (error) throw error;
+    mutationFn: async ({ id, ...updates }: Partial<Note> & { id: string; folder?: string }) => {
+      await desktopAPI.notes.update({ id, ...updates });
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notes'] }),
     onError: () => showError('Erro ao atualizar nota'),
@@ -44,8 +37,7 @@ export function useNotes() {
 
   const deleteNote = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('notes').delete().eq('id', id);
-      if (error) throw error;
+      await desktopAPI.notes.delete(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notes'] });

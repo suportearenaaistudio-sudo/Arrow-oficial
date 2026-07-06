@@ -1,25 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
+import { desktopAPI } from '@/lib/desktop-api';
+import { useVault } from '@/contexts/VaultContext';
 import { useNotification } from './useNotification';
 import type { Cycle, WeeklyCheckin } from '@/types/arrow';
 
 export function useCycles() {
-  const { user } = useAuth();
+  const { profile } = useVault();
   const queryClient = useQueryClient();
   const { showSuccess, showError } = useNotification();
 
   const cyclesQuery = useQuery({
-    queryKey: ['cycles', user?.id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('cycles')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return (data || []) as unknown as Cycle[];
-    },
-    enabled: !!user,
+    queryKey: ['cycles', profile?.id],
+    queryFn: () => desktopAPI.db.cycles.list() as Promise<Cycle[]>,
+    enabled: !!profile,
     retry: false,
   });
 
@@ -32,7 +25,6 @@ export function useCycles() {
       const endDate = new Date(startDate);
       endDate.setDate(endDate.getDate() + duration * 7);
 
-      // Pre-populate weekly_checkins
       const checkins: WeeklyCheckin[] = Array.from({ length: duration }, (_, i) => {
         const weekDate = new Date(startDate);
         weekDate.setDate(weekDate.getDate() + i * 7);
@@ -47,19 +39,12 @@ export function useCycles() {
         };
       });
 
-      const { data, error } = await supabase
-        .from('cycles')
-        .insert({
-          ...cycle,
-          user_id: user!.id,
-          end_date: endDate.toISOString().split('T')[0],
-          weekly_checkins: checkins,
-          duration,
-        } as any)
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
+      return desktopAPI.db.cycles.create({
+        ...cycle,
+        end_date: endDate.toISOString().split('T')[0],
+        weekly_checkins: checkins,
+        duration,
+      }) as Promise<Cycle>;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cycles'] });
@@ -70,36 +55,15 @@ export function useCycles() {
 
   const updateCycle = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Cycle> & { id: string }) => {
-      const { data, error } = await supabase
-        .from('cycles')
-        .update(updates as any)
-        .eq('id', id)
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
+      return desktopAPI.db.cycles.update({ id, ...updates }) as Promise<Cycle>;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['cycles'] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['cycles'] }),
     onError: () => showError('Erro ao atualizar ciclo'),
   });
 
   const activateCycle = useMutation({
     mutationFn: async (cycleId: string) => {
-      // Pause all active cycles first
-      await supabase
-        .from('cycles')
-        .update({ status: 'pausado' })
-        .eq('status', 'ativo')
-        .eq('user_id', user!.id);
-
-      // Activate the selected one
-      const { error } = await supabase
-        .from('cycles')
-        .update({ status: 'ativo' })
-        .eq('id', cycleId);
-      if (error) throw error;
+      await desktopAPI.db.cycles.activate(cycleId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cycles'] });
@@ -110,8 +74,7 @@ export function useCycles() {
 
   const deleteCycle = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('cycles').delete().eq('id', id);
-      if (error) throw error;
+      await desktopAPI.db.cycles.delete(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cycles'] });
