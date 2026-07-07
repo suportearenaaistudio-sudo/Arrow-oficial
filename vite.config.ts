@@ -20,6 +20,9 @@ export default defineConfig({
     ],
   },
   clearScreen: false,
+  optimizeDeps: {
+    include: ['react-markdown', 'remark-gfm'],
+  },
   server: {
     host: host || "::",
     port: 5555,

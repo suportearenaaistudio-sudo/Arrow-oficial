@@ -1,9 +1,12 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
 use serde_json::{json, Value};
 use tauri::{AppHandle, State};
 
+use crate::ai::{AiService, PendingToolCall, GEMINI_API_KEY_SETTING, GEMINI_MODEL_SETTING, current_week_start, mask_api_key, test_gemini_connection, resolve_gemini_model, MAX_CONTEXT_CHARS, MAX_CONTEXT_TOKEN_BUDGET};
+use crate::ai_personal::get_personal_context;
 use crate::app_state::{load_app_state, save_app_state};
 use crate::notes::NotesStore;
 use crate::types::{UiProfile, VaultStatus};
@@ -12,6 +15,7 @@ use crate::vault::{LocalProfileUpdate, VaultManager};
 pub struct AppData {
     pub vault: Mutex<VaultManager>,
     pub app_state_path: PathBuf,
+    pub ai_pending: Mutex<HashMap<String, PendingToolCall>>,
 }
 
 fn profile_to_ui(vault: &VaultManager, profile: &crate::types::LocalProfile) -> UiProfile {
@@ -453,6 +457,256 @@ pub fn notes_delete(state: State<'_, AppData>, id: String) -> Result<(), String>
     let path = vault.get_vault_path()?;
     let store = NotesStore::new(&path, &user_id);
     store.delete(&id)
+}
+
+// ─── AI commands ────────────────────────────────────────────
+
+fn weekly_usage_json(db: &crate::db::ArrowDatabase, user_id: &str) -> Result<Value, String> {
+    let week = current_week_start();
+    let usage = db.get_token_usage(user_id, &week)?;
+    Ok(json!({
+        "weekStart": usage.get("week_start").cloned().unwrap_or(json!(week)),
+        "tokensIn": usage.get("tokens_in").cloned().unwrap_or(json!(0)),
+        "tokensOut": usage.get("tokens_out").cloned().unwrap_or(json!(0)),
+        "tokensTotal": usage.get("tokens_total").cloned().unwrap_or(json!(0)),
+        "requestCount": usage.get("request_count").cloned().unwrap_or(json!(0)),
+    }))
+}
+
+#[tauri::command]
+pub fn ai_get_settings(state: State<'_, AppData>) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let db = vault.get_database()?;
+    let configured = db.get_setting(GEMINI_API_KEY_SETTING)?.is_some();
+    let masked = db
+        .get_setting(GEMINI_API_KEY_SETTING)?
+        .map(|k| mask_api_key(&k));
+    let user_id = vault.get_profile_id()?;
+    let model = resolve_gemini_model(db);
+    let personal_context = get_personal_context(db)?;
+    Ok(json!({
+        "configured": configured,
+        "maskedKey": masked,
+        "model": model,
+        "personalContext": personal_context,
+        "weeklyUsage": weekly_usage_json(db, &user_id)?,
+    }))
+}
+
+#[tauri::command]
+pub fn ai_save_model(state: State<'_, AppData>, model: String) -> Result<Value, String> {
+    let trimmed = model.trim().to_string();
+    if trimmed.is_empty() {
+        return Err("Informe o ID do modelo Gemini".to_string());
+    }
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let db = vault.get_database()?;
+    db.set_setting(GEMINI_MODEL_SETTING, &trimmed)?;
+    let saved = db.get_setting(GEMINI_MODEL_SETTING)?;
+    if saved.as_deref() != Some(trimmed.as_str()) {
+        return Err("Falha ao persistir modelo no vault".to_string());
+    }
+    let user_id = vault.get_profile_id()?;
+    let configured = db.get_setting(GEMINI_API_KEY_SETTING)?.is_some();
+    let masked = db
+        .get_setting(GEMINI_API_KEY_SETTING)?
+        .map(|k| mask_api_key(&k));
+    Ok(json!({
+        "configured": configured,
+        "maskedKey": masked,
+        "model": trimmed,
+        "weeklyUsage": weekly_usage_json(db, &user_id)?,
+    }))
+}
+
+#[tauri::command]
+pub fn ai_save_api_key(state: State<'_, AppData>, api_key: String) -> Result<Value, String> {
+    let key = api_key.trim().to_string();
+    if key.is_empty() {
+        return Err("Chave API não pode ser vazia".to_string());
+    }
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let db = vault.get_database()?;
+    let model = resolve_gemini_model(db);
+    test_gemini_connection(&key, &model)?;
+    db.set_setting(GEMINI_API_KEY_SETTING, &key)?;
+    let user_id = vault.get_profile_id()?;
+    Ok(json!({
+        "configured": true,
+        "maskedKey": mask_api_key(&key),
+        "model": model,
+        "weeklyUsage": weekly_usage_json(db, &user_id)?,
+    }))
+}
+
+#[tauri::command]
+pub fn ai_remove_api_key(state: State<'_, AppData>) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let db = vault.get_database()?;
+    db.delete_setting(GEMINI_API_KEY_SETTING)?;
+    let user_id = vault.get_profile_id()?;
+    let model = resolve_gemini_model(db);
+    Ok(json!({
+        "configured": false,
+        "model": model,
+        "weeklyUsage": weekly_usage_json(db, &user_id)?,
+    }))
+}
+
+#[tauri::command]
+pub fn ai_test_api_key(state: State<'_, AppData>, api_key: Option<String>, model: Option<String>) -> Result<(), String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let db = vault.get_database()?;
+    let key = if let Some(k) = api_key {
+        k.trim().to_string()
+    } else {
+        db.get_setting(GEMINI_API_KEY_SETTING)?
+            .ok_or_else(|| "Nenhuma chave configurada".to_string())?
+    };
+    let model = if let Some(m) = model {
+        m.trim().to_string()
+    } else {
+        resolve_gemini_model(db)
+    };
+    drop(vault);
+    test_gemini_connection(&key, &model)
+}
+
+#[tauri::command]
+pub fn ai_get_weekly_usage(state: State<'_, AppData>) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    weekly_usage_json(vault.get_database()?, &user_id)
+}
+
+#[tauri::command]
+pub fn ai_list_conversations(state: State<'_, AppData>) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    let rows = vault.get_database()?.list_ai_conversations(&user_id)?;
+    Ok(json!(rows))
+}
+
+#[tauri::command]
+pub fn ai_create_conversation(state: State<'_, AppData>, title: Option<String>) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    let row = vault
+        .get_database()?
+        .create_ai_conversation(&user_id, title.as_deref())?;
+    Ok(Value::Object(row))
+}
+
+#[tauri::command]
+pub fn ai_delete_conversation(state: State<'_, AppData>, id: String) -> Result<(), String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    vault.get_database()?.delete_ai_conversation(&id)
+}
+
+#[tauri::command]
+pub fn ai_rename_conversation(state: State<'_, AppData>, id: String, title: String) -> Result<(), String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    vault.get_database()?.update_ai_conversation_title(&id, title.trim())
+}
+
+#[tauri::command]
+pub fn ai_list_messages(state: State<'_, AppData>, conversation_id: String) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let rows = vault
+        .get_database()?
+        .list_ai_messages(&conversation_id, None)?;
+    Ok(json!(rows))
+}
+
+#[tauri::command]
+pub fn ai_get_context_stats(
+    state: State<'_, AppData>,
+    conversation_id: Option<String>,
+) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let profile = vault.get_status().2.ok_or_else(|| "Vault não aberto".to_string())?;
+    let history = if let Some(ref cid) = conversation_id {
+        vault.get_database()?.list_ai_messages(cid, Some(20))?
+    } else {
+        vec![]
+    };
+    let db = vault.get_database()?;
+    let personal_context = crate::ai_personal::get_personal_context(db)?;
+    let stats = AiService::get_context_stats(&profile, &personal_context, &history);
+    Ok(json!({
+        "estimatedTokens": stats.estimated_tokens,
+        "charCount": stats.char_count,
+        "maxTokens": MAX_CONTEXT_TOKEN_BUDGET,
+        "maxChars": MAX_CONTEXT_CHARS,
+        "truncated": stats.truncated,
+    }))
+}
+
+fn send_result_to_json(result: crate::ai::SendMessageResult) -> Value {
+    json!({
+        "status": result.status,
+        "text": result.text,
+        "tokensIn": result.tokens_in,
+        "tokensOut": result.tokens_out,
+        "weeklyUsage": {
+            "weekStart": result.weekly_usage.get("week_start").cloned().unwrap_or(Value::Null),
+            "tokensIn": result.weekly_usage.get("tokens_in").cloned().unwrap_or(json!(0)),
+            "tokensOut": result.weekly_usage.get("tokens_out").cloned().unwrap_or(json!(0)),
+            "tokensTotal": result.weekly_usage.get("tokens_total").cloned().unwrap_or(json!(0)),
+            "requestCount": result.weekly_usage.get("request_count").cloned().unwrap_or(json!(0)),
+        },
+        "contextStats": {
+            "estimatedTokens": result.context_stats.estimated_tokens,
+            "charCount": result.context_stats.char_count,
+            "truncated": result.context_stats.truncated,
+        },
+        "pendingId": result.pending_id,
+        "pendingTool": result.pending_tool,
+        "pendingPreview": result.pending_preview,
+        "affectedQueries": result.affected_queries,
+        "userMessageId": result.user_message_id,
+        "assistantMessageId": result.assistant_message_id,
+    })
+}
+
+#[tauri::command]
+pub fn ai_send_message(
+    state: State<'_, AppData>,
+    conversation_id: String,
+    message: String,
+) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    let profile = vault.get_status().2.ok_or_else(|| "Vault não aberto".to_string())?;
+    let path = vault.get_vault_path()?;
+    let db = vault.get_database()?;
+    let notes = NotesStore::new(&path, &user_id);
+    let result = AiService::send_message(
+        db,
+        &notes,
+        &user_id,
+        &profile,
+        &conversation_id,
+        message.trim(),
+        &state.ai_pending,
+    )?;
+    Ok(send_result_to_json(result))
+}
+
+#[tauri::command]
+pub fn ai_confirm_tool(
+    state: State<'_, AppData>,
+    pending_id: String,
+    confirmed: bool,
+) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    let profile = vault.get_status().2.ok_or_else(|| "Vault não aberto".to_string())?;
+    let path = vault.get_vault_path()?;
+    let db = vault.get_database()?;
+    let notes = NotesStore::new(&path, &user_id);
+    let result = AiService::confirm_tool(db, &notes, &user_id, &profile, &pending_id, confirmed, &state.ai_pending)?;
+    Ok(send_result_to_json(result))
 }
 
 #[derive(Default)]

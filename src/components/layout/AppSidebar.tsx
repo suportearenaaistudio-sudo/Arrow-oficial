@@ -6,7 +6,7 @@ import { usePlatformChrome, SIDEBAR_TRANSITION, SIDEBAR_HEADER_EXTRA } from '@/h
 import {
   LayoutDashboard, Calendar, Target, ListChecks,
   Repeat, Wallet, StickyNote, BarChart3,
-  Settings, Compass, Flame, Eye, Timer,
+  Settings, Compass, Flame, Eye, Timer, Sparkles,
 } from 'lucide-react';
 
 export const SIDEBAR_WIDTH = 240;
@@ -45,6 +45,7 @@ const navSections: { title: string; items: NavItem[] }[] = [
       { path: '/finances', label: 'Financas', icon: Wallet },
       { path: '/notes', label: 'Notas', icon: StickyNote },
       { path: '/analysis', label: 'Analise', icon: BarChart3 },
+      { path: '/assistant', label: 'Assistente', icon: Sparkles },
     ],
   },
 ];

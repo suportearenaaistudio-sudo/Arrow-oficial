@@ -116,4 +116,62 @@ export const desktopAPI = {
       return invoke('clear_window_vibrancy');
     },
   },
+  ai: {
+    getSettings: () => {
+      requireDesktop();
+      return invoke('ai_get_settings');
+    },
+    saveApiKey: (apiKey: string) => {
+      requireDesktop();
+      return invoke('ai_save_api_key', { apiKey });
+    },
+    removeApiKey: () => {
+      requireDesktop();
+      return invoke('ai_remove_api_key');
+    },
+    saveModel: (model: string) => {
+      requireDesktop();
+      return invoke('ai_save_model', { model });
+    },
+    testApiKey: (apiKey?: string, model?: string) => {
+      requireDesktop();
+      return invoke('ai_test_api_key', { apiKey: apiKey ?? null, model: model ?? null });
+    },
+    getWeeklyUsage: () => {
+      requireDesktop();
+      return invoke('ai_get_weekly_usage');
+    },
+    getContextStats: (conversationId?: string | null) => {
+      requireDesktop();
+      return invoke('ai_get_context_stats', { conversationId: conversationId ?? null });
+    },
+    listConversations: () => {
+      requireDesktop();
+      return invoke('ai_list_conversations');
+    },
+    createConversation: (title?: string) => {
+      requireDesktop();
+      return invoke('ai_create_conversation', { title: title ?? null });
+    },
+    deleteConversation: (id: string) => {
+      requireDesktop();
+      return invoke('ai_delete_conversation', { id });
+    },
+    renameConversation: (id: string, title: string) => {
+      requireDesktop();
+      return invoke('ai_rename_conversation', { id, title });
+    },
+    listMessages: (conversationId: string) => {
+      requireDesktop();
+      return invoke('ai_list_messages', { conversationId });
+    },
+    sendMessage: (conversationId: string, message: string) => {
+      requireDesktop();
+      return invoke('ai_send_message', { conversationId, message });
+    },
+    confirmTool: (pendingId: string, confirmed: boolean) => {
+      requireDesktop();
+      return invoke('ai_confirm_tool', { pendingId, confirmed });
+    },
+  },
 };

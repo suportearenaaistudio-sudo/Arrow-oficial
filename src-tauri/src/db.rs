@@ -621,4 +621,175 @@ impl ArrowDatabase {
         let id = insert_row(&self.conn, "weekly_scores", insert)?;
         get_by_id(&self.conn, "weekly_scores", &id)
     }
+
+    // ─── App settings ─────────────────────────────────────────
+
+    pub fn get_setting(&self, key: &str) -> Result<Option<String>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT value FROM app_settings WHERE key = ?")
+            .map_err(|e| e.to_string())?;
+        let row = stmt
+            .query_row(params![key], |row| row.get::<_, String>(0))
+            .ok();
+        Ok(row)
+    }
+
+    pub fn set_setting(&self, key: &str, value: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                params![key, value],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn delete_setting(&self, key: &str) -> Result<(), String> {
+        self.conn
+            .execute("DELETE FROM app_settings WHERE key = ?", params![key])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    // ─── AI conversations ─────────────────────────────────────
+
+    pub fn list_ai_conversations(&self, user_id: &str) -> Result<Vec<Map<String, Value>>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT * FROM ai_conversations WHERE user_id = ? ORDER BY updated_at DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![user_id], |row| row_to_map(row))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn create_ai_conversation(&self, user_id: &str, title: Option<&str>) -> Result<Map<String, Value>, String> {
+        let ts = now_iso();
+        let id = Uuid::new_v4().to_string();
+        let title = title.unwrap_or("Nova conversa");
+        self.conn
+            .execute(
+                "INSERT INTO ai_conversations (id, user_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                params![id, user_id, title, ts, ts],
+            )
+            .map_err(|e| e.to_string())?;
+        get_by_id(&self.conn, "ai_conversations", &id)
+    }
+
+    pub fn update_ai_conversation_title(&self, id: &str, title: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "UPDATE ai_conversations SET title = ?, updated_at = ? WHERE id = ?",
+                params![title, now_iso(), id],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn touch_ai_conversation(&self, id: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "UPDATE ai_conversations SET updated_at = ? WHERE id = ?",
+                params![now_iso(), id],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn delete_ai_conversation(&self, id: &str) -> Result<(), String> {
+        self.conn
+            .execute("DELETE FROM ai_messages WHERE conversation_id = ?", params![id])
+            .map_err(|e| e.to_string())?;
+        self.conn
+            .execute("DELETE FROM ai_conversations WHERE id = ?", params![id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn list_ai_messages(&self, conversation_id: &str, limit: Option<i64>) -> Result<Vec<Map<String, Value>>, String> {
+        let limit = limit.unwrap_or(100);
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT * FROM ai_messages WHERE conversation_id = ? ORDER BY created_at ASC LIMIT ?",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![conversation_id, limit], |row| row_to_map(row))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn insert_ai_message(
+        &self,
+        conversation_id: &str,
+        role: &str,
+        content: &str,
+        tool_name: Option<&str>,
+        tokens_in: i64,
+        tokens_out: i64,
+    ) -> Result<Map<String, Value>, String> {
+        let id = Uuid::new_v4().to_string();
+        let ts = now_iso();
+        self.conn
+            .execute(
+                "INSERT INTO ai_messages (id, conversation_id, role, content, tool_name, tokens_in, tokens_out, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                params![id, conversation_id, role, content, tool_name, tokens_in, tokens_out, ts],
+            )
+            .map_err(|e| e.to_string())?;
+        get_by_id(&self.conn, "ai_messages", &id)
+    }
+
+    pub fn increment_token_usage(
+        &self,
+        user_id: &str,
+        week_start: &str,
+        tokens_in: i64,
+        tokens_out: i64,
+    ) -> Result<Map<String, Value>, String> {
+        let ts = now_iso();
+        let total = tokens_in + tokens_out;
+        self.conn
+            .execute(
+                "INSERT INTO ai_token_usage (user_id, week_start, tokens_in, tokens_out, tokens_total, request_count, updated_at)
+                 VALUES (?, ?, ?, ?, ?, 1, ?)
+                 ON CONFLICT(user_id, week_start) DO UPDATE SET
+                   tokens_in = tokens_in + excluded.tokens_in,
+                   tokens_out = tokens_out + excluded.tokens_out,
+                   tokens_total = tokens_total + excluded.tokens_total,
+                   request_count = request_count + 1,
+                   updated_at = excluded.updated_at",
+                params![user_id, week_start, tokens_in, tokens_out, total, ts],
+            )
+            .map_err(|e| e.to_string())?;
+        self.get_token_usage(user_id, week_start)
+    }
+
+    pub fn get_token_usage(&self, user_id: &str, week_start: &str) -> Result<Map<String, Value>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT * FROM ai_token_usage WHERE user_id = ? AND week_start = ?",
+            )
+            .map_err(|e| e.to_string())?;
+        let row = stmt
+            .query_row(params![user_id, week_start], |row| row_to_map(row))
+            .unwrap_or_else(|_| {
+                let mut m = Map::new();
+                m.insert("user_id".to_string(), json!(user_id));
+                m.insert("week_start".to_string(), json!(week_start));
+                m.insert("tokens_in".to_string(), json!(0));
+                m.insert("tokens_out".to_string(), json!(0));
+                m.insert("tokens_total".to_string(), json!(0));
+                m.insert("request_count".to_string(), json!(0));
+                m
+            });
+        Ok(row)
+    }
 }

@@ -1,3 +1,7 @@
+mod ai;
+mod ai_context;
+mod ai_personal;
+mod ai_tools;
 mod app_state;
 mod commands;
 mod db;
@@ -7,6 +11,7 @@ mod types;
 mod vault;
 
 use std::sync::Mutex;
+use std::collections::HashMap;
 
 use tauri::Manager;
 
@@ -35,6 +40,7 @@ pub fn run() {
             let data = AppData {
                 vault: Mutex::new(VaultManager::default()),
                 app_state_path,
+                ai_pending: Mutex::new(HashMap::new()),
             };
             commands::try_open_last_vault(&data);
             app.manage(data);
@@ -85,6 +91,20 @@ pub fn run() {
             commands::notes_delete,
             commands::sync_window_vibrancy,
             commands::clear_window_vibrancy,
+            commands::ai_get_settings,
+            commands::ai_save_api_key,
+            commands::ai_save_model,
+            commands::ai_remove_api_key,
+            commands::ai_test_api_key,
+            commands::ai_get_weekly_usage,
+            commands::ai_list_conversations,
+            commands::ai_create_conversation,
+            commands::ai_delete_conversation,
+            commands::ai_rename_conversation,
+            commands::ai_list_messages,
+            commands::ai_get_context_stats,
+            commands::ai_send_message,
+            commands::ai_confirm_tool,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

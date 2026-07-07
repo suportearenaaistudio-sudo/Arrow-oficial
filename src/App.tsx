@@ -25,6 +25,7 @@ import Analysis from "./pages/Analysis";
 import Settings from "./pages/Settings";
 import Vision from "./pages/Vision";
 import Pomodoro from "./pages/Pomodoro";
+import Assistant from "./pages/Assistant";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -58,10 +59,12 @@ const App = () => (
               <Route path="/finances" element={<Finances />} />
               <Route path="/notes" element={<Notes />} />
               <Route path="/analysis" element={<Analysis />} />
+              <Route path="/assistant" element={<Assistant />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="*" element={<NotFound />} />
             </Route>
 
-            {/* Catch-all */}
+            {/* Catch-all for routes outside layout */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

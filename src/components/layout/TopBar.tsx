@@ -4,7 +4,7 @@ import { useSidebar } from '@/contexts/SidebarContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { usePlatformChrome, SIDEBAR_TRANSITION, TOPBAR_DESKTOP_PADDING_TOP } from '@/hooks/usePlatformChrome';
 import {
-  Search, Bell, Target, ListChecks, StickyNote,
+  Search, Bell, Target, ListChecks, StickyNote, Sparkles,
   PanelLeft, ChevronDown, LogOut, Settings, X,
 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
@@ -111,6 +111,29 @@ export default function TopBar({ visible = true }: { visible?: boolean }) {
       <div className="flex-1 min-w-0" />
 
       <div className="flex items-center gap-1.5 flex-shrink-0">
+        <Tooltip delayDuration={200}>
+          <TooltipTrigger asChild>
+            <button
+              onClick={() => navigate('/assistant')}
+              className="w-8 h-8 rounded-md flex items-center justify-center transition-colors duration-150"
+              style={{ color: theme.textSecondary }}
+              aria-label="Assistente IA"
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = controlHover;
+                e.currentTarget.style.color = theme.accent;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = theme.textSecondary;
+              }}
+            >
+              <Sparkles className="w-4 h-4" strokeWidth={1.5} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="text-xs">
+            Assistente IA
+          </TooltipContent>
+        </Tooltip>
         <FocusTimerPill />
         <ThemeToggle />
 

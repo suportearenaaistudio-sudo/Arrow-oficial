@@ -151,3 +151,34 @@ CREATE TABLE IF NOT EXISTS app_settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS ai_conversations (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  title TEXT NOT NULL DEFAULT 'Nova conversa',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ai_messages (
+  id TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  content TEXT NOT NULL,
+  tool_name TEXT,
+  tokens_in INTEGER DEFAULT 0,
+  tokens_out INTEGER DEFAULT 0,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (conversation_id) REFERENCES ai_conversations(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS ai_token_usage (
+  user_id TEXT NOT NULL,
+  week_start TEXT NOT NULL,
+  tokens_in INTEGER NOT NULL DEFAULT 0,
+  tokens_out INTEGER NOT NULL DEFAULT 0,
+  tokens_total INTEGER NOT NULL DEFAULT 0,
+  request_count INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, week_start)
+);

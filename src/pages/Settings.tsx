@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { User, Download, Trash2, LogOut, Shield, Globe, Palette, Check, Sun, Moon, Stars, Camera, Loader2, CloudRain, Volume2, Volume1, Volume, VolumeX, Sparkles, Ban, PanelLeft, Layout, Monitor } from 'lucide-react';
+import { User, Download, Trash2, LogOut, Shield, Globe, Palette, Check, Sun, Moon, Stars, Camera, Loader2, CloudRain, Volume2, Volume1, Volume, VolumeX, Sparkles, Ban, PanelLeft, Layout, Monitor, Key, Eye, EyeOff, ExternalLink } from 'lucide-react';
 import { useVault } from '@/contexts/VaultContext';
 import {
   useTheme,
@@ -15,11 +15,15 @@ import {
 } from '@/contexts/ThemeContext';
 import { useNotification } from '@/hooks/useNotification';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { useState, useRef, type ReactNode } from 'react';
+import { useState, useRef, useEffect, type ReactNode } from 'react';
 import AvatarCropper from '@/components/ui/AvatarCropper';
 import { useRainSound, RainIntensity } from '@/contexts/RainSoundContext';
 import { useVisualQuality } from '@/contexts/VisualQualityContext';
 import type { VisualQuality } from '@/lib/platform';
+import { useAISettings } from '@/hooks/useAISettings';
+import WeeklyTokenCounter from '@/components/ai/WeeklyTokenCounter';
+import { isDesktop } from '@/lib/desktop-api';
+import { DEFAULT_GEMINI_MODEL, GEMINI_MODEL_PRESETS } from '@/lib/ai-constants';
 
 function SettingsSection({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   return (
@@ -78,6 +82,52 @@ export default function Settings() {
   const { showSuccess, showInfo, showError } = useNotification();
   const { intensity: rainIntensity, setIntensity: setRainIntensity, isPlaying: rainIsPlaying } = useRainSound();
   const { quality: visualQuality, setQuality: setVisualQuality } = useVisualQuality();
+  const {
+    configured: aiConfigured,
+    settings: aiSettings,
+    saveApiKey,
+    saveModel,
+    removeApiKey,
+    testApiKey,
+    refetch: refetchAiSettings,
+  } = useAISettings();
+
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [modelInput, setModelInput] = useState('');
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [aiSaving, setAiSaving] = useState(false);
+  const [aiTesting, setAiTesting] = useState(false);
+  const [aiSavingModel, setAiSavingModel] = useState(false);
+
+  useEffect(() => {
+    refetchAiSettings();
+  }, [refetchAiSettings]);
+
+  useEffect(() => {
+    if (aiSettings?.model) {
+      setModelInput(aiSettings.model);
+    }
+  }, [aiSettings?.model]);
+
+  async function handleSaveModel(model: string) {
+    const trimmed = model.trim();
+    if (!trimmed) return;
+    setAiSavingModel(true);
+    try {
+      const data = await saveModel.mutateAsync(trimmed);
+      setModelInput(data.model ?? trimmed);
+      showSuccess('Modelo salvo no vault!');
+    } catch {
+      showError('Erro ao salvar modelo');
+    } finally {
+      setAiSavingModel(false);
+    }
+  }
+
+  async function handleSelectPreset(preset: string) {
+    setModelInput(preset);
+    await handleSaveModel(preset);
+  }
 
   const visualQualityOptions: { id: VisualQuality; label: string; desc: string }[] = [
     { id: 'alta', label: 'Alta', desc: 'Efeitos completos otimizados' },
@@ -236,6 +286,197 @@ export default function Settings() {
         </div>
       </SettingsCard>
       </SettingsSection>
+
+      {/* ── Inteligência Artificial ── */}
+      {isDesktop() && (
+      <SettingsSection
+        title="Inteligência Artificial"
+        description="Chave API Gemini, conversas e uso de tokens ficam apenas no vault (.arrow/)"
+      >
+        <SettingsCard
+          title="API Gemini"
+          icon={<Sparkles className="w-5 h-5" style={{ color: 'var(--arrow-accent)' }} />}
+          description="Obtenha sua chave em Google AI Studio. Cada perfil usa sua própria chave — sem servidor Arrow."
+        >
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <span
+                className="text-xs px-2 py-1 rounded-lg font-medium"
+                style={{
+                  background: aiConfigured ? 'rgba(34,197,94,0.15)' : 'var(--arrow-bg-card)',
+                  color: aiConfigured ? '#22c55e' : 'var(--arrow-text-muted)',
+                  border: `1px solid ${aiConfigured ? '#22c55e' : 'var(--arrow-border)'}`,
+                }}
+              >
+                {aiConfigured ? `Configurada ${aiSettings?.maskedKey ?? ''}` : 'Não configurada'}
+              </span>
+              <a
+                href="https://aistudio.google.com/apikey"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs flex items-center gap-1 hover:underline"
+                style={{ color: 'var(--arrow-accent)' }}
+              >
+                Google AI Studio <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+
+            <div className="relative">
+              <label className="text-xs font-medium mb-1 block" style={{ color: 'var(--arrow-text-muted)' }}>
+                Chave API
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type={showApiKey ? 'text' : 'password'}
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  placeholder={aiConfigured ? 'Cole uma nova chave para substituir' : 'Cole sua chave API aqui'}
+                  className="flex-1 px-3 py-2 rounded-xl text-sm outline-none"
+                  style={{
+                    background: 'var(--arrow-bg-card)',
+                    border: '1px solid var(--arrow-border)',
+                    color: 'var(--arrow-text-primary)',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowApiKey(!showApiKey)}
+                  className="w-10 h-10 rounded-xl flex items-center justify-center"
+                  style={{ border: '1px solid var(--arrow-border)', color: 'var(--arrow-text-secondary)' }}
+                >
+                  {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium mb-1 block" style={{ color: 'var(--arrow-text-muted)' }}>
+                Modelo Gemini
+              </label>
+              <p className="text-[10px] mb-2" style={{ color: 'var(--arrow-text-secondary)' }}>
+                Use qualquer ID de modelo da API Google (ex.: gemini-2.5-flash, gemini-2.5-pro).
+              </p>
+              <input
+                type="text"
+                value={modelInput}
+                onChange={(e) => setModelInput(e.target.value)}
+                placeholder={DEFAULT_GEMINI_MODEL}
+                className="w-full px-3 py-2 rounded-xl text-sm outline-none mb-2"
+                style={{
+                  background: 'var(--arrow-bg-card)',
+                  border: '1px solid var(--arrow-border)',
+                  color: 'var(--arrow-text-primary)',
+                }}
+              />
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {GEMINI_MODEL_PRESETS.map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => handleSelectPreset(preset)}
+                    disabled={aiSavingModel}
+                    className="text-[10px] px-2 py-1 rounded-lg"
+                    style={{
+                      background: modelInput === preset ? 'var(--arrow-accent-light)' : 'var(--arrow-bg-card)',
+                      border: `1px solid ${modelInput === preset ? 'var(--arrow-accent)' : 'var(--arrow-border)'}`,
+                      color: modelInput === preset ? 'var(--arrow-accent)' : 'var(--arrow-text-secondary)',
+                    }}
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
+              <button
+                disabled={!modelInput.trim() || aiSavingModel}
+                onClick={() => handleSaveModel(modelInput)}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-40"
+                style={{ border: '1px solid var(--arrow-border)', color: 'var(--arrow-text-secondary)' }}
+              >
+                {aiSavingModel ? 'Salvando modelo...' : 'Salvar modelo'}
+              </button>
+            </div>
+
+            {aiSettings?.personalContext ? (
+              <div className="mt-3 p-3 rounded-xl text-xs" style={{ background: 'var(--arrow-bg-card)', border: '1px solid var(--arrow-border)' }}>
+                <p className="font-medium mb-1" style={{ color: 'var(--arrow-text-secondary)' }}>
+                  Contexto pessoal (automático)
+                </p>
+                <p className="whitespace-pre-wrap leading-relaxed" style={{ color: 'var(--arrow-text-muted)' }}>
+                  {aiSettings.personalContext}
+                </p>
+              </div>
+            ) : null}
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                disabled={!apiKeyInput.trim() || aiSaving}
+                onClick={async () => {
+                  setAiSaving(true);
+                  try {
+                    await saveApiKey.mutateAsync(apiKeyInput.trim());
+                    setApiKeyInput('');
+                    showSuccess('Chave API salva no vault!');
+                  } catch {
+                    showError('Erro ao salvar chave API');
+                  } finally {
+                    setAiSaving(false);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40 flex items-center gap-2"
+                style={{
+                  background: `linear-gradient(135deg, ${theme.gradientFrom}, ${theme.gradientTo})`,
+                  color: isDark ? '#0B0B0B' : 'white',
+                }}
+              >
+                <Key className="w-4 h-4" />
+                {aiSaving ? 'Salvando...' : 'Salvar'}
+              </button>
+              <button
+                disabled={aiTesting || (!apiKeyInput.trim() && !aiConfigured)}
+                onClick={async () => {
+                  setAiTesting(true);
+                  try {
+                    await testApiKey.mutateAsync({
+                      apiKey: apiKeyInput.trim() || undefined,
+                      model: modelInput.trim() || undefined,
+                    });
+                    showSuccess('Conexão com Gemini OK!');
+                  } catch {
+                    showError('Falha ao testar — verifique chave e modelo');
+                  } finally {
+                    setAiTesting(false);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl text-sm disabled:opacity-40"
+                style={{ border: '1px solid var(--arrow-border)', color: 'var(--arrow-text-secondary)' }}
+              >
+                {aiTesting ? 'Testando...' : 'Testar conexão'}
+              </button>
+              {aiConfigured && (
+                <button
+                  onClick={async () => {
+                    try {
+                      await removeApiKey.mutateAsync();
+                      showInfo('Chave API removida do vault');
+                    } catch {
+                      showError('Erro ao remover chave');
+                    }
+                  }}
+                  className="px-4 py-2 rounded-xl text-sm"
+                  style={{ color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)' }}
+                >
+                  Remover chave
+                </button>
+              )}
+            </div>
+          </div>
+        </SettingsCard>
+
+        {aiSettings?.weeklyUsage && (
+          <WeeklyTokenCounter usage={aiSettings.weeklyUsage} />
+        )}
+      </SettingsSection>
+      )}
 
       {/* ── Aparência ── */}
       <SettingsSection title="Aparência" description="Tema, transparência e efeitos visuais">
