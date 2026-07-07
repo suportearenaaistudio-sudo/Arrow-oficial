@@ -51,7 +51,7 @@ const INTENSITY_CONFIG: Record<Exclude<RainIntensity, 'off'>, {
 };
 
 export function RainSoundProvider({ children }: { children: ReactNode }) {
-  const { theme } = useTheme();
+  const { backgroundEffect } = useTheme();
   const [intensity, setIntensityState] = useState<RainIntensity>(() => {
     return (localStorage.getItem('arrow-rain-intensity') as RainIntensity) || 'off';
   });
@@ -180,19 +180,19 @@ export function RainSoundProvider({ children }: { children: ReactNode }) {
 
   // React to intensity or theme changes
   useEffect(() => {
-    if (!theme.hasRain || intensity === 'off') {
+    if (backgroundEffect !== 'rain' || intensity === 'off') {
       stopSound();
     }
     // Sound only starts when user clicks, not on mount (browser policy)
-  }, [theme.hasRain, intensity, stopSound]);
+  }, [backgroundEffect, intensity, stopSound]);
 
-  // Start sound when intensity is set and theme is rain (user gesture triggers this)
+  // Start sound when intensity is set and rain effect is active
   useEffect(() => {
-    if (theme.hasRain && intensity !== 'off') {
+    if (backgroundEffect === 'rain' && intensity !== 'off') {
       startSound(intensity);
     }
     return () => stopSound();
-  }, [intensity, theme.hasRain, startSound, stopSound]);
+  }, [intensity, backgroundEffect, startSound, stopSound]);
 
   // Provide thunder trigger for RainBackground
   useEffect(() => {

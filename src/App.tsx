@@ -7,6 +7,7 @@ import { VaultProvider } from "@/contexts/VaultContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { VisualQualityProvider } from "@/contexts/VisualQualityContext";
 import { RainSoundProvider } from "@/contexts/RainSoundContext";
+import { FocusTimerProvider } from "@/contexts/FocusTimerContext";
 import AppLayout from "@/components/layout/AppLayout";
 
 // Pages
@@ -23,6 +24,7 @@ import Notes from "./pages/Notes";
 import Analysis from "./pages/Analysis";
 import Settings from "./pages/Settings";
 import Vision from "./pages/Vision";
+import Pomodoro from "./pages/Pomodoro";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -34,6 +36,7 @@ const App = () => (
         <ThemeProvider>
         <VisualQualityProvider>
         <RainSoundProvider>
+        <FocusTimerProvider>
         <Sonner position="top-right" />
         <LazyMotion features={domAnimation}>
         <BrowserRouter>
@@ -50,6 +53,7 @@ const App = () => (
               <Route path="/goals" element={<Goals />} />
               <Route path="/goal-detail/:id" element={<GoalDetail />} />
               <Route path="/tasks" element={<Tasks />} />
+              <Route path="/pomodoro" element={<Pomodoro />} />
               <Route path="/habits" element={<Habits />} />
               <Route path="/finances" element={<Finances />} />
               <Route path="/notes" element={<Notes />} />
@@ -62,6 +66,7 @@ const App = () => (
           </Routes>
         </BrowserRouter>
         </LazyMotion>
+        </FocusTimerProvider>
         </RainSoundProvider>
         </VisualQualityProvider>
         </ThemeProvider>

@@ -313,13 +313,3 @@ export type ViewMode = 'cards' | 'timeline' | 'kanban' | 'matrix' | 'calendar';
 export type FinancePeriod = 'semanal' | 'mensal' | 'anual';
 
 export type AnalysisPeriod = 'atual' | 'mes' | 'trimestre' | 'ano';
-
-export type TimeBlockType = 'estrategico' | 'buffer' | 'escape';
-
-export interface TimeBlock {
-  type: TimeBlockType;
-  label: string;
-  description: string;
-  color: string;
-  defaultMinutes: number;
-}

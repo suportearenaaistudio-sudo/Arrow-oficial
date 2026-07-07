@@ -4,14 +4,23 @@ import { useVault } from '@/contexts/VaultContext';
 import { useNotification } from './useNotification';
 import type { Goal } from '@/types/arrow';
 
+function cleanGoalFilters(filters?: { category?: string; status?: string; search?: string; cycleId?: string }) {
+  if (!filters) return undefined;
+  const cleaned = Object.fromEntries(
+    Object.entries(filters).filter(([, v]) => v != null && v !== ''),
+  );
+  return Object.keys(cleaned).length > 0 ? cleaned : undefined;
+}
+
 export function useGoals(filters?: { category?: string; status?: string; search?: string; cycleId?: string }) {
   const { profile } = useVault();
   const queryClient = useQueryClient();
   const { showSuccess, showError } = useNotification();
+  const apiFilters = cleanGoalFilters(filters);
 
   const goalsQuery = useQuery({
-    queryKey: ['goals', profile?.id, filters],
-    queryFn: () => desktopAPI.db.goals.list(filters) as Promise<Goal[]>,
+    queryKey: ['goals', profile?.id, apiFilters],
+    queryFn: () => desktopAPI.db.goals.list(apiFilters) as Promise<Goal[]>,
     enabled: !!profile,
     retry: false,
   });

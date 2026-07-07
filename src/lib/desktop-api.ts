@@ -106,4 +106,14 @@ export const desktopAPI = {
     update: (data: unknown) => invoke('notes_update', { data }),
     delete: (id: string) => invoke('notes_delete', { id }),
   },
+  chrome: {
+    syncVibrancy: (isDark: boolean) => {
+      requireDesktop();
+      return invoke('sync_window_vibrancy', { isDark });
+    },
+    clearVibrancy: () => {
+      requireDesktop();
+      return invoke('clear_window_vibrancy');
+    },
+  },
 };

@@ -19,6 +19,16 @@ pub struct VaultConfig {
     pub version: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
+    #[serde(rename = "colorTheme", skip_serializing_if = "Option::is_none")]
+    pub color_theme: Option<String>,
+    #[serde(rename = "backgroundEffect", skip_serializing_if = "Option::is_none")]
+    pub background_effect: Option<String>,
+    #[serde(rename = "rainDensity", skip_serializing_if = "Option::is_none")]
+    pub rain_density: Option<f64>,
+    #[serde(rename = "glassScope", skip_serializing_if = "Option::is_none")]
+    pub glass_scope: Option<String>,
+    #[serde(rename = "glassOpacity", skip_serializing_if = "Option::is_none")]
+    pub glass_opacity: Option<f64>,
     #[serde(rename = "visualQuality", skip_serializing_if = "Option::is_none")]
     pub visual_quality: Option<String>,
 }

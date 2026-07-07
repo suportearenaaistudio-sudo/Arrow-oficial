@@ -1,177 +1,171 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import type { LucideIcon } from 'lucide-react';
 import { useSidebar } from '@/contexts/SidebarContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { usePlatformChrome, SIDEBAR_TRANSITION, SIDEBAR_HEADER_EXTRA } from '@/hooks/usePlatformChrome';
 import {
   LayoutDashboard, Calendar, Target, ListChecks,
   Repeat, Wallet, StickyNote, BarChart3,
-  Settings, Compass, Flame, Eye,
+  Settings, Compass, Flame, Eye, Timer,
 } from 'lucide-react';
 
-const navItems = [
-  { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/vision', label: 'Visão', icon: Eye },
-  { path: '/planning', label: 'Planejamento', icon: Calendar },
-  { path: '/cycles', label: 'Ciclos', icon: Flame },
-  { path: '/goals', label: 'Metas', icon: Target },
-  { path: '/tasks', label: 'Tarefas', icon: ListChecks },
-  { path: '/habits', label: 'Habitos', icon: Repeat },
-  { path: '/finances', label: 'Financas', icon: Wallet },
-  { path: '/notes', label: 'Notas', icon: StickyNote },
-  { path: '/analysis', label: 'Analise', icon: BarChart3 },
+export const SIDEBAR_WIDTH = 240;
+
+interface NavItem {
+  path: string;
+  label: string;
+  icon: LucideIcon;
+}
+
+const navSections: { title: string; items: NavItem[] }[] = [
+  {
+    title: 'Visao Geral',
+    items: [{ path: '/', label: 'Dashboard', icon: LayoutDashboard }],
+  },
+  {
+    title: 'Planejamento',
+    items: [
+      { path: '/vision', label: 'Visao', icon: Eye },
+      { path: '/planning', label: 'Planejamento', icon: Calendar },
+      { path: '/cycles', label: 'Ciclos', icon: Flame },
+    ],
+  },
+  {
+    title: 'Execucao',
+    items: [
+      { path: '/pomodoro', label: 'Pomodoro', icon: Timer },
+      { path: '/goals', label: 'Metas', icon: Target },
+      { path: '/tasks', label: 'Tarefas', icon: ListChecks },
+      { path: '/habits', label: 'Habitos', icon: Repeat },
+    ],
+  },
+  {
+    title: 'Dados',
+    items: [
+      { path: '/finances', label: 'Financas', icon: Wallet },
+      { path: '/notes', label: 'Notas', icon: StickyNote },
+      { path: '/analysis', label: 'Analise', icon: BarChart3 },
+    ],
+  },
 ];
 
 export default function AppSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { collapsed } = useSidebar();
-  const { theme, isDark } = useTheme();
+  const { theme, isDark, glassScope } = useTheme();
+  const { isDesktopApp, titleBarHeight } = usePlatformChrome(collapsed);
 
-  const textColor = isDark ? '#e4e4e7' : '#1a1a2e';
-  const textMuted = isDark ? '#71717a' : '#9ca3af';
+  const glassNav = isDark && glassScope !== 'none';
+  const textColor = theme.textPrimary;
+  const inactiveColor = isDark ? (glassNav ? theme.textSecondary : theme.textMuted) : '#48484a';
+  const sectionColor = isDark ? (glassNav ? theme.textSecondary : theme.textMuted) : '#6e6e73';
+  const activeBg = isDark
+    ? glassNav
+      ? 'rgba(255,255,255,0.16)'
+      : 'rgba(255,255,255,0.08)'
+    : 'rgba(0,0,0,0.06)';
+  const isSettingsActive = location.pathname === '/settings';
+
+  const navButton = (item: NavItem, isActive: boolean) => {
+    const Icon = item.icon;
+    return (
+      <button
+        key={item.path}
+        onClick={() => navigate(item.path)}
+        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg transition-colors duration-150 text-left"
+        style={{
+          color: isActive ? textColor : inactiveColor,
+          background: isActive ? activeBg : 'transparent',
+          fontWeight: isActive ? 600 : 500,
+        }}
+        onMouseEnter={(e) => {
+          if (!isActive) e.currentTarget.style.background = activeBg;
+        }}
+        onMouseLeave={(e) => {
+          if (!isActive) e.currentTarget.style.background = 'transparent';
+        }}
+      >
+        <Icon
+          className="w-4 h-4 flex-shrink-0"
+          strokeWidth={isActive ? 2.25 : 2}
+          style={{ color: isActive ? theme.accent : inactiveColor }}
+        />
+        <span className="text-[13px] whitespace-nowrap">{item.label}</span>
+      </button>
+    );
+  };
 
   return (
     <aside
-      className="fixed left-0 top-0 z-30 h-screen w-[220px] flex-shrink-0 transition-transform duration-250 ease-out"
+      className={`arrow-sidebar fixed top-0 bottom-0 z-30 overflow-hidden${glassNav ? ' arrow-sidebar--glass-nav' : ''}`}
       style={{
-        transform: collapsed ? 'translateX(-100%)' : 'translateX(0)',
+        width: SIDEBAR_WIDTH,
+        height: '100vh',
+        left: collapsed ? -SIDEBAR_WIDTH : 0,
+        transition: `left ${SIDEBAR_TRANSITION}`,
         pointerEvents: collapsed ? 'none' : 'auto',
-        willChange: 'transform',
-        isolation: 'isolate',
       }}
+      aria-hidden={collapsed}
     >
-      <div
-        className="flex flex-col h-[calc(100vh-16px)] my-2 ml-2 rounded-2xl overflow-hidden w-[204px]"
-        style={{
-          background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.75)',
-          backdropFilter: 'blur(20px)',
-          border: `1px solid ${theme.border}`,
-        }}
-      >
-        {/* Logo */}
-        <div className="flex items-center gap-3 px-4 h-14 flex-shrink-0">
-          <div
-            className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{
-              background: `linear-gradient(135deg, ${theme.gradientFrom}, ${theme.gradientTo})`,
-            }}
-          >
-            <Compass className="w-4.5 h-4.5" style={{ color: isDark ? '#0B0B0B' : 'white' }} />
-          </div>
-          <span
-            key={theme.id}
-            className="text-base font-bold"
-            style={{
-              background: `linear-gradient(135deg, ${theme.gradientFrom}, ${theme.gradientTo})`,
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-            }}
-          >
-            Arrow
-          </span>
-        </div>
+      <div className="flex flex-col h-full">
+        {/* Traffic-light band — drag region, no branding */}
+        <div
+          className="flex-shrink-0 w-full"
+          style={{ height: isDesktopApp ? titleBarHeight + SIDEBAR_HEADER_EXTRA : 8 }}
+          data-tauri-drag-region
+        />
 
-        <div className="mx-3 h-px" style={{ background: theme.border }} />
-
-        <nav className="flex-1 py-2 px-2 space-y-0.5 overflow-y-auto">
-          {navItems.map((item) => {
-            const isActive = location.pathname === item.path;
-            const Icon = item.icon;
-
-            return (
-              <button
-                key={item.path}
-                onClick={() => navigate(item.path)}
-                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-200 relative text-left overflow-hidden"
-                style={{
-                  color: isActive ? textColor : textMuted,
-                  background: isActive
-                    ? `linear-gradient(90deg, ${theme.accentLight}, transparent)`
-                    : 'transparent',
-                }}
-                onMouseEnter={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)';
-                    e.currentTarget.style.color = textColor;
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.background = 'transparent';
-                    e.currentTarget.style.color = textMuted;
-                  }
-                }}
+        <nav className="flex-1 px-2 pt-1 overflow-y-auto space-y-4">
+          {navSections.map((section) => (
+            <div key={section.title}>
+              <p
+                className="px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wide"
+                style={{ color: sectionColor }}
               >
-                {isActive && (
-                  <motion.div
-                    layoutId="sidebar-active"
-                    className="absolute left-0 top-[20%] w-[3px] rounded-r-full"
-                    style={{
-                      height: '60%',
-                      background: `linear-gradient(to bottom, ${theme.gradientFrom}, ${theme.gradientTo})`,
-                    }}
-                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                  />
+                {section.title}
+              </p>
+              <div className="space-y-0.5">
+                {section.items.map((item) =>
+                  navButton(item, location.pathname === item.path),
                 )}
-                <Icon
-                  className="w-[17px] h-[17px] flex-shrink-0"
-                  strokeWidth={isActive ? 2.2 : 1.8}
-                  style={{ color: isActive ? theme.accent : undefined }}
-                />
-                <span
-                  className="text-[13px] whitespace-nowrap"
-                  style={{ fontWeight: isActive ? 600 : 400 }}
-                >
-                  {item.label}
-                </span>
-              </button>
-            );
-          })}
+              </div>
+            </div>
+          ))}
         </nav>
 
-        <div className="mx-3 h-px" style={{ background: theme.border }} />
-
-        <div className="px-2 py-2 flex-shrink-0">
-          <button
-            onClick={() => navigate('/settings')}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all duration-200 text-left relative overflow-hidden"
+        {/* Footer brand + settings */}
+        <div
+          className="mt-auto flex items-center gap-2 px-3 py-2.5 flex-shrink-0"
+          style={{ borderTop: `1px solid ${theme.border}` }}
+        >
+          <div
+            className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0"
             style={{
-              color: location.pathname === '/settings' ? textColor : textMuted,
-              background: location.pathname === '/settings'
-                ? `linear-gradient(90deg, ${theme.accentLight}, transparent)`
-                : 'transparent',
-            }}
-            onMouseEnter={(e) => {
-              if (location.pathname !== '/settings') {
-                e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)';
-                e.currentTarget.style.color = textColor;
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (location.pathname !== '/settings') {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = textMuted;
-              }
+              background: `linear-gradient(135deg, ${theme.gradientFrom}, ${theme.gradientTo})`,
             }}
           >
-            {location.pathname === '/settings' && (
-              <motion.div
-                className="absolute left-0 top-[20%] w-[3px] rounded-r-full"
-                style={{
-                  height: '60%',
-                  background: `linear-gradient(to bottom, ${theme.gradientFrom}, ${theme.gradientTo})`,
-                }}
-              />
-            )}
-            <Settings
-              className="w-[17px] h-[17px] flex-shrink-0"
-              strokeWidth={1.8}
-              style={{ color: location.pathname === '/settings' ? theme.accent : undefined }}
-            />
-            <span className="text-[13px]" style={{ fontWeight: location.pathname === '/settings' ? 600 : 400 }}>
-              Configuracoes
-            </span>
+            <Compass className="w-3 h-3" style={{ color: isDark ? '#000' : '#fff' }} />
+          </div>
+          <span className="text-[13px] font-semibold flex-1" style={{ color: textColor }}>
+            Arrow
+          </span>
+          <button
+            onClick={() => navigate('/settings')}
+            className="w-7 h-7 rounded-md flex items-center justify-center transition-colors duration-150 flex-shrink-0"
+            style={{
+              color: isSettingsActive ? theme.accent : inactiveColor,
+              background: isSettingsActive ? activeBg : 'transparent',
+            }}
+            title="Configuracoes"
+            onMouseEnter={(e) => {
+              if (!isSettingsActive) e.currentTarget.style.background = activeBg;
+            }}
+            onMouseLeave={(e) => {
+              if (!isSettingsActive) e.currentTarget.style.background = 'transparent';
+            }}
+          >
+            <Settings className="w-4 h-4" strokeWidth={1.5} />
           </button>
         </div>
       </div>

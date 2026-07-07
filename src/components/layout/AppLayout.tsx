@@ -6,13 +6,27 @@ import { SidebarProvider, useSidebar } from '@/contexts/SidebarContext';
 import { StarfieldBackground } from '@/components/ui/StarfieldBackground';
 import { RainBackground } from '@/components/ui/RainBackground';
 import TopBar from './TopBar';
-import AppSidebar from './AppSidebar';
+import AppSidebar, { SIDEBAR_WIDTH } from './AppSidebar';
+import { useRef } from 'react';
+import { useHideOnScroll } from '@/hooks/useHideOnScroll';
+import { SIDEBAR_TRANSITION } from '@/hooks/usePlatformChrome';
+import { isDesktop } from '@/lib/platform';
 
 function LayoutInner() {
   const { isReady, loading } = useVault();
-  const { theme } = useTheme();
+  const { theme, backgroundEffect, glassScope } = useTheme();
   const { collapsed } = useSidebar();
   const { showHeavyEffects } = useVisualQuality();
+  const mainRef = useRef<HTMLElement>(null);
+  const topBarVisible = useHideOnScroll(mainRef);
+
+  const desktop = isDesktop();
+  const glassEnabled = glassScope !== 'none';
+  const sidebarOnlyGlass = glassScope === 'sidebar';
+  const fullGlass = glassScope === 'full';
+  const shellTransparent = glassEnabled && (desktop || fullGlass);
+  const showMainFill = sidebarOnlyGlass;
+  const showMainGlass = fullGlass;
 
   if (loading) {
     return (
@@ -30,19 +44,53 @@ function LayoutInner() {
   }
 
   return (
-    <div className="min-h-screen" style={{ background: theme.bg }}>
-      {showHeavyEffects && theme.hasStarfield && <StarfieldBackground isDark={theme.isDark} />}
-      {showHeavyEffects && theme.hasRain && <RainBackground />}
+    <div
+      className="app-shell relative"
+      style={{ background: shellTransparent ? 'transparent' : theme.bg }}
+    >
+      {showHeavyEffects && backgroundEffect === 'starfield' && (
+        <StarfieldBackground isDark={theme.isDark} />
+      )}
+      {showHeavyEffects && backgroundEffect === 'rain' && <RainBackground />}
+
+      {showMainFill && (
+        <div
+          aria-hidden
+          className="fixed top-0 right-0 bottom-0 z-[2] pointer-events-none"
+          style={{
+            left: desktop ? (collapsed ? 0 : SIDEBAR_WIDTH) : 0,
+            background: theme.bg,
+            transition: desktop ? `left ${SIDEBAR_TRANSITION}` : undefined,
+          }}
+        />
+      )}
+
+      {showMainGlass && (
+        <div
+          aria-hidden
+          className="app-main-glass fixed top-0 right-0 bottom-0 z-[1] pointer-events-none"
+          style={{
+            left: desktop ? (collapsed ? 0 : SIDEBAR_WIDTH) : 0,
+            transition: desktop ? `left ${SIDEBAR_TRANSITION}` : undefined,
+          }}
+        />
+      )}
 
       <AppSidebar />
 
       <div
-        className="flex flex-col min-h-screen relative z-10 transition-all duration-250"
-        style={{ marginLeft: collapsed ? 0 : 220 }}
+        className="app-main-column relative z-10"
+        style={{
+          marginLeft: collapsed ? 0 : SIDEBAR_WIDTH,
+          transition: `margin-left ${SIDEBAR_TRANSITION}`,
+          background: 'transparent',
+        }}
       >
-        <TopBar />
-        <main className="flex-1 overflow-y-auto p-6 lg:p-8">
-          <Outlet />
+        <main ref={mainRef} className="flex-1 overflow-y-auto min-h-0">
+          <TopBar visible={topBarVisible} />
+          <div className="p-6 lg:p-8">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>

@@ -19,16 +19,21 @@
     --arrow-red: 0 84% 60%;
 
     /* === Theme Variables (set by ThemeContext) === */
-    --arrow-bg: #f8f8fb;
-    --arrow-bg-card: rgba(255,255,255,0.85);
-    --arrow-bg-sidebar: rgba(255,255,255,0.92);
-    --arrow-bg-topbar: rgba(255,255,255,0.85);
-    --arrow-text-primary: #1a1a2e;
-    --arrow-text-secondary: #6b7280;
-    --arrow-text-muted: #9ca3af;
-    --arrow-border: rgba(0,0,0,0.06);
+    --arrow-bg: #f5f5f7;
+    --arrow-bg-elevated: #ffffff;
+    --arrow-bg-card: rgba(255,255,255,0.72);
+    --arrow-bg-sidebar: rgba(255, 255, 255, 0.28);
+    --arrow-bg-glass-main: rgba(255, 255, 255, 0.35);
+    --arrow-bg-topbar: #f5f5f7;
+    --arrow-text-primary: #1d1d1f;
+    --arrow-text-secondary: #6e6e73;
+    --arrow-text-muted: #86868b;
+    --arrow-border: rgba(0,0,0,0.08);
+    --arrow-rim-light: inset 0 1px 0 rgba(255,255,255,0.1), inset 1px 0 0 rgba(255,255,255,0.04);
+    --arrow-radius-card: 32px;
+    --arrow-radius-control: 12px;
     --arrow-accent: #f97316;
-    --arrow-accent-light: rgba(249,115,22,0.1);
+    --arrow-accent-light: rgba(249,115,22,0.12);
     --arrow-gradient-from: #f97316;
     --arrow-gradient-to: #3b82f6;
 
@@ -99,7 +104,7 @@
   }
 
   html {
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif;
   }
 
   body {
@@ -119,26 +124,79 @@
     transition: background-color 0.4s ease;
   }
 
-  /* Light mode gets the gradient overlay */
-  :root:not(.dark) .arrow-bg {
-    @apply bg-gradient-to-br from-orange-50/80 via-blue-50/50 to-purple-50/60;
+  /* Kanban columns — allow drag preview to escape column bounds */
+  .kanban-column {
+    overflow: visible;
+    contain: none;
   }
 
-  /* === Glassmorphism Cards === */
+  /* === Apple-style Cards === */
   .arrow-card {
+    position: relative;
     background: var(--arrow-bg-card);
-    backdrop-filter: blur(8px);
-    border-radius: 1rem;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: var(--arrow-radius-card);
     border: 1px solid var(--arrow-border);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-    transition: box-shadow 0.3s ease, transform 0.2s ease, background 0.3s ease, border-color 0.3s ease;
+    box-shadow: var(--arrow-rim-light);
+    transition: background 0.25s ease, border-color 0.25s ease, filter 0.2s ease;
     contain: layout style paint;
+    overflow: hidden;
   }
-  .arrow-card:hover {
-    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+
+  .arrow-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(
+      135deg,
+      rgba(255,255,255,0.12) 0%,
+      rgba(255,255,255,0.04) 25%,
+      transparent 50%
+    );
+    opacity: 0.9;
+    z-index: 0;
   }
-  .dark .arrow-card:hover {
-    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+
+  .dark .arrow-card::before {
+    background: linear-gradient(
+      135deg,
+      rgba(255,255,255,0.08) 0%,
+      rgba(255,255,255,0.02) 30%,
+      transparent 55%
+    );
+  }
+
+  .arrow-card > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .arrow-card-interactive:hover {
+    filter: brightness(1.04);
+  }
+
+  .dark .arrow-card-interactive:hover {
+    filter: brightness(1.08);
+  }
+
+  .arrow-card-stat {
+    padding: 1.25rem;
+  }
+
+  .arrow-card-stat-icon {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .arrow-rim {
+    box-shadow: var(--arrow-rim-light);
   }
 
   /* === Stat Card Tints === */
@@ -149,12 +207,12 @@
   .stat-card-orange { @apply bg-orange-50/80 border-orange-100/60; }
   .stat-card-red    { @apply bg-red-50/80 border-red-100/60; }
 
-  .dark .stat-card-blue   { background: rgba(59,130,246,0.08); border-color: rgba(59,130,246,0.15); }
-  .dark .stat-card-green  { background: rgba(34,197,94,0.08); border-color: rgba(34,197,94,0.15); }
-  .dark .stat-card-purple { background: rgba(168,85,247,0.08); border-color: rgba(168,85,247,0.15); }
-  .dark .stat-card-amber  { background: rgba(245,158,11,0.08); border-color: rgba(245,158,11,0.15); }
-  .dark .stat-card-orange { background: rgba(249,115,22,0.08); border-color: rgba(249,115,22,0.15); }
-  .dark .stat-card-red    { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.15); }
+  .dark .stat-card-blue   { background: rgba(59,130,246,0.12); border-color: rgba(59,130,246,0.22); }
+  .dark .stat-card-green  { background: rgba(34,197,94,0.12); border-color: rgba(34,197,94,0.22); }
+  .dark .stat-card-purple { background: rgba(168,85,247,0.12); border-color: rgba(168,85,247,0.22); }
+  .dark .stat-card-amber  { background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.22); }
+  .dark .stat-card-orange { background: rgba(249,115,22,0.12); border-color: rgba(249,115,22,0.22); }
+  .dark .stat-card-red    { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.22); }
 
   /* === Gradient Text === */
   .arrow-gradient-text {
@@ -166,25 +224,25 @@
 
   /* === Buttons === */
   .arrow-btn-primary {
-    background: linear-gradient(135deg, var(--arrow-gradient-from), var(--arrow-gradient-to));
-    color: white;
-    font-weight: 500;
-    border-radius: 0.75rem;
-    padding: 0.625rem 1.25rem;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    transition: all 0.2s ease;
+    background: var(--arrow-accent);
+    color: #000000;
+    font-weight: 600;
+    border-radius: 9999px;
+    padding: 0.75rem 1.5rem;
+    border: none;
+    transition: filter 0.2s ease, transform 0.15s ease;
   }
   .arrow-btn-primary:hover {
-    filter: brightness(1.1);
-    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    filter: brightness(1.08);
   }
   .arrow-btn-primary:active {
     transform: scale(0.98);
   }
 
-  .dark .arrow-btn-primary {
-    color: #0B0B0B;
-    font-weight: 600;
+  :root:not(.dark) .arrow-btn-primary {
+    background: linear-gradient(135deg, var(--arrow-gradient-from), var(--arrow-gradient-to));
+    color: white;
+    font-weight: 500;
   }
 
   .arrow-btn-secondary {
@@ -192,7 +250,7 @@
     border: 1px solid var(--arrow-border);
     color: var(--arrow-text-primary);
     font-weight: 500;
-    border-radius: 0.75rem;
+    border-radius: var(--arrow-radius-control);
     padding: 0.625rem 1.25rem;
     transition: all 0.2s ease;
   }
@@ -214,18 +272,116 @@
 
   /* === Top Bar === */
   .arrow-topbar {
-    background: var(--arrow-bg-topbar);
-    backdrop-filter: blur(12px);
-    border-bottom: 1px solid var(--arrow-border);
-    transition: background 0.3s ease, border-color 0.3s ease;
+    position: sticky;
+    top: 0;
+    background: transparent !important;
+    border-bottom: none !important;
+    -webkit-app-region: drag;
+    transition: transform 0.25s ease-out, padding-left 0.25s ease-out;
+    will-change: transform;
   }
 
-  /* === Sidebar === */
+  .arrow-topbar[data-hidden='true'] {
+    transform: translateY(-100%);
+    pointer-events: none;
+  }
+
+  .arrow-topbar button,
+  .arrow-topbar input,
+  .arrow-topbar a {
+    -webkit-app-region: no-drag;
+  }
+
+  /* === Sidebar — frosted glass (theme-aware via CSS vars) === */
   .arrow-sidebar {
-    background: var(--arrow-bg-sidebar);
-    backdrop-filter: blur(8px);
+    background: transparent;
     border-right: 1px solid var(--arrow-border);
-    transition: background 0.3s ease, border-color 0.3s ease;
+    transition: left 0.25s ease-out, border-color 0.3s ease;
+    contain: layout style;
+  }
+
+  .arrow-sidebar::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--arrow-bg-sidebar);
+    backdrop-filter: blur(40px) saturate(180%);
+    -webkit-backdrop-filter: blur(40px) saturate(180%);
+    z-index: 0;
+    pointer-events: none;
+    transform: translate3d(0, 0, 0);
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+  }
+
+  /* Flat mode — solid sidebar */
+  html[data-glass-scope='none'] .arrow-sidebar::before {
+    background: var(--arrow-bg-elevated);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  /* macOS desktop: native vibrancy — tint only (CSS blur causes flicker) */
+  html.is-desktop .arrow-sidebar::before {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  html.is-desktop[data-glass-scope='none'] .arrow-sidebar::before {
+    background: var(--arrow-bg-elevated);
+  }
+
+  /* Dark glass — brighter nav labels */
+  .arrow-sidebar--glass-nav nav button {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  }
+
+  .arrow-sidebar--glass-nav nav p {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  }
+
+  /* Main content glass when scope = full */
+  .app-main-glass::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--arrow-bg-glass-main);
+    backdrop-filter: blur(40px) saturate(180%);
+    -webkit-backdrop-filter: blur(40px) saturate(180%);
+  }
+
+  html.is-desktop .app-main-glass::before {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .arrow-sidebar > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Transparent root for native vibrancy (desktop only) */
+  html.glass-desktop,
+  html.glass-desktop body,
+  html.glass-desktop #root {
+    background: transparent !important;
+  }
+
+  /* === Native title bar (Tauri macOS) === */
+  .app-shell {
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+    background: var(--arrow-bg);
+  }
+
+  .app-main-column {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
   }
 
   /* === Kanban Column Colors === */

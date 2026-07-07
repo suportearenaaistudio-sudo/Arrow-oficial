@@ -146,6 +146,11 @@ pub fn vault_get_config(state: State<'_, AppData>) -> Result<Value, String> {
     Ok(json!({
         "version": config.version,
         "theme": config.theme,
+        "colorTheme": config.color_theme,
+        "backgroundEffect": config.background_effect,
+        "rainDensity": config.rain_density,
+        "glassScope": config.glass_scope,
+        "glassOpacity": config.glass_opacity,
         "visualQuality": config.visual_quality,
     }))
 }
@@ -157,6 +162,9 @@ pub fn vault_save_config(state: State<'_, AppData>, config: Value) -> Result<Val
     Ok(json!({
         "version": next.version,
         "theme": next.theme,
+        "colorTheme": next.color_theme,
+        "backgroundEffect": next.background_effect,
+        "rainDensity": next.rain_density,
         "visualQuality": next.visual_quality,
     }))
 }
@@ -445,6 +453,89 @@ pub fn notes_delete(state: State<'_, AppData>, id: String) -> Result<(), String>
     let path = vault.get_vault_path()?;
     let store = NotesStore::new(&path, &user_id);
     store.delete(&id)
+}
+
+#[derive(Default)]
+struct VibrancyState {
+    enabled: bool,
+    is_dark: bool,
+}
+
+static VIBRANCY_STATE: Mutex<VibrancyState> = Mutex::new(VibrancyState {
+    enabled: false,
+    is_dark: false,
+});
+
+#[cfg(target_os = "macos")]
+fn apply_macos_vibrancy(window: &tauri::WebviewWindow, is_dark: bool) -> Result<(), String> {
+    use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectState};
+
+    let material = if is_dark {
+        NSVisualEffectMaterial::HudWindow
+    } else {
+        NSVisualEffectMaterial::Sidebar
+    };
+    apply_vibrancy(
+        window,
+        material,
+        Some(NSVisualEffectState::FollowsWindowActiveState),
+        None,
+    )
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn sync_window_vibrancy(app: AppHandle, is_dark: bool) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use tauri::Manager;
+        use window_vibrancy::clear_vibrancy;
+
+        let window = app
+            .get_webview_window("main")
+            .ok_or_else(|| "Janela principal não encontrada".to_string())?;
+
+        let mut state = VIBRANCY_STATE.lock().map_err(|e| e.to_string())?;
+        if state.enabled && state.is_dark == is_dark {
+            return Ok(());
+        }
+
+        if state.enabled {
+            let _ = clear_vibrancy(&window);
+        }
+
+        apply_macos_vibrancy(&window, is_dark)?;
+        state.enabled = true;
+        state.is_dark = is_dark;
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, is_dark);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn clear_window_vibrancy(app: AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use tauri::Manager;
+        use window_vibrancy::clear_vibrancy;
+
+        let window = app
+            .get_webview_window("main")
+            .ok_or_else(|| "Janela principal não encontrada".to_string())?;
+
+        let _ = clear_vibrancy(&window);
+
+        let mut state = VIBRANCY_STATE.lock().map_err(|e| e.to_string())?;
+        state.enabled = false;
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+    }
+    Ok(())
 }
 
 pub fn try_open_last_vault(state: &AppData) {

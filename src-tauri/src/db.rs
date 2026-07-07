@@ -255,19 +255,19 @@ impl ArrowDatabase {
         let mut sql = String::from("SELECT * FROM goals WHERE user_id = ?");
         let f = filters.unwrap_or(json!({}));
         let mut bind: Vec<SqlValue> = vec![SqlValue::Text(user_id.to_string())];
-        if let Some(cat) = f.get("category").and_then(|v| v.as_str()) {
+        if let Some(cat) = f.get("category").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
             sql.push_str(" AND category = ?");
             bind.push(SqlValue::Text(cat.to_string()));
         }
-        if let Some(status) = f.get("status").and_then(|v| v.as_str()) {
+        if let Some(status) = f.get("status").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
             sql.push_str(" AND status = ?");
             bind.push(SqlValue::Text(status.to_string()));
         }
-        if let Some(cycle_id) = f.get("cycleId").and_then(|v| v.as_str()) {
+        if let Some(cycle_id) = f.get("cycleId").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
             sql.push_str(" AND cycle_id = ?");
             bind.push(SqlValue::Text(cycle_id.to_string()));
         }
-        if let Some(search) = f.get("search").and_then(|v| v.as_str()) {
+        if let Some(search) = f.get("search").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
             sql.push_str(" AND title LIKE ?");
             bind.push(SqlValue::Text(format!("%{}%", search)));
         }

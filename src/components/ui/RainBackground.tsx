@@ -59,16 +59,13 @@ export const RainBackground = memo(function RainBackground() {
   const splashesRef = useRef<Splash[]>([]);
   const lightningRef = useRef<Lightning | null>(null);
   const lastLightningRef = useRef(0);
-  const { theme } = useTheme();
-  const density = theme.rainDensity ?? 1;
+  const { theme, rainDensity } = useTheme();
+  const densityRef = useRef(rainDensity ?? 1);
   const isDark = theme.isDark;
   const isDarkRef = useRef(isDark);
 
-  useEffect(() => {
-    isDarkRef.current = isDark;
-  }, [isDark]);
-
   const initDrops = useCallback((w: number, h: number) => {
+    const density = densityRef.current;
     const drops: Drop[] = [];
     const count = Math.floor((w * h) / 3000 * density);
     for (let i = 0; i < count; i++) {
@@ -81,7 +78,18 @@ export const RainBackground = memo(function RainBackground() {
       });
     }
     dropsRef.current = drops;
-  }, [density]);
+  }, []);
+
+  useEffect(() => {
+    densityRef.current = rainDensity ?? 1;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    if (w > 0 && h > 0) initDrops(w, h);
+  }, [rainDensity, initDrops]);
+
+  useEffect(() => {
+    isDarkRef.current = isDark;
+  }, [isDark]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -291,7 +299,7 @@ export const RainBackground = memo(function RainBackground() {
     <canvas
       ref={canvasRef}
       aria-hidden="true"
-      className="pointer-events-none fixed inset-0 z-[1]"
+      className="pointer-events-none fixed inset-0 z-[3]"
       style={{ background: 'transparent', contain: 'strict', transform: 'translateZ(0)' }}
     />
   );

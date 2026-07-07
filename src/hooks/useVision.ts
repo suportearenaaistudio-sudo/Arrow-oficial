@@ -1,3 +1,5 @@
+import type { LucideIcon } from 'lucide-react';
+import { Briefcase, Heart, Wallet, Star, Dumbbell } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { desktopAPI } from '@/lib/desktop-api';
 import { useVault } from '@/contexts/VaultContext';
@@ -15,12 +17,42 @@ export interface Vision {
 
 export type VisionArea = 'career_5y' | 'health_5y' | 'finance_5y' | 'relationships_5y' | 'impact_5y';
 
-export const VISION_AREAS: { key: VisionArea; label: string; emoji: string; placeholder: string }[] = [
-  { key: 'career_5y', label: 'Carreira & Negócios', emoji: '💼', placeholder: 'Onde você quer estar profissionalmente em 5 anos? Que impacto quer gerar?' },
-  { key: 'health_5y', label: 'Saúde & Bem-estar', emoji: '💪', placeholder: 'Como quer se sentir fisicamente e mentalmente? Quais hábitos quer ter?' },
-  { key: 'finance_5y', label: 'Finanças', emoji: '💰', placeholder: 'Qual sua situação financeira ideal? Patrimônio, renda, liberdade?' },
-  { key: 'relationships_5y', label: 'Relacionamentos', emoji: '❤️', placeholder: 'Como são suas relações com família, amigos, parceiro(a)?' },
-  { key: 'impact_5y', label: 'Impacto & Legado', emoji: '🌟', placeholder: 'Que diferença você quer ter feito no mundo? O que as pessoas vão lembrar de você?' },
+export const VISION_AREAS: {
+  key: VisionArea;
+  label: string;
+  icon: LucideIcon;
+  placeholder: string;
+}[] = [
+  {
+    key: 'career_5y',
+    label: 'Carreira & Negocios',
+    icon: Briefcase,
+    placeholder: 'Onde voce quer estar profissionalmente em 5 anos? Que impacto quer gerar?',
+  },
+  {
+    key: 'health_5y',
+    label: 'Saude & Bem-estar',
+    icon: Dumbbell,
+    placeholder: 'Como quer se sentir fisicamente e mentalmente? Quais habitos quer ter?',
+  },
+  {
+    key: 'finance_5y',
+    label: 'Financas',
+    icon: Wallet,
+    placeholder: 'Qual sua situacao financeira ideal? Patrimonio, renda, liberdade?',
+  },
+  {
+    key: 'relationships_5y',
+    label: 'Relacionamentos',
+    icon: Heart,
+    placeholder: 'Como sao suas relacoes com familia, amigos, parceiro(a)?',
+  },
+  {
+    key: 'impact_5y',
+    label: 'Impacto & Legado',
+    icon: Star,
+    placeholder: 'Que diferenca voce quer ter feito no mundo? O que as pessoas vao lembrar de voce?',
+  },
 ];
 
 export function useVision() {

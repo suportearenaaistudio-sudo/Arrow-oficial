@@ -6,7 +6,7 @@ export function isDesktop(): boolean {
 
 export function markDesktopRoot(): void {
   if (typeof document !== 'undefined' && isDesktop()) {
-    document.documentElement.classList.add('desktop');
+    document.documentElement.classList.add('desktop', 'is-desktop');
   }
 }
 

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Landmark, Plus, TrendingUp, TrendingDown, DollarSign, Trash2, ArrowUpCircle, ArrowDownCircle } from 'lucide-react';
+import { ArrowCard } from '@/components/ui/ArrowCard';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useTransactions } from '@/hooks/useTransactions';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -12,6 +14,7 @@ const expenseCats = ['alimentacao', 'transporte', 'moradia', 'lazer', 'saude', '
 const emptyForm = { description: '', amount: 0, type: 'despesa' as TransactionType, category: '', date: new Date().toISOString().split('T')[0] };
 
 export default function Finances() {
+  const { theme } = useTheme();
   const { transactions, receitas, despesas, saldo, isLoading, createTransaction, deleteTransaction } = useTransactions();
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -86,32 +89,45 @@ export default function Finances() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="arrow-card p-5 stat-card-green">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="arrow-label">Receitas</p>
-              <p className="text-xl font-bold text-green-700 mt-1">{formatCurrency(receitas)}</p>
-            </div>
-            <ArrowUpCircle className="w-8 h-8 text-green-400" />
-          </div>
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+          <ArrowCard
+            variant="stat"
+            className="stat-card-green"
+            label="Receitas"
+            value={formatCurrency(receitas)}
+            icon={
+              <div className="arrow-card-stat-icon" style={{ background: 'rgba(34,197,94,0.15)' }}>
+                <ArrowUpCircle className="w-5 h-5 text-green-500" />
+              </div>
+            }
+          />
         </motion.div>
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="arrow-card p-5 stat-card-red">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="arrow-label">Despesas</p>
-              <p className="text-xl font-bold text-red-700 mt-1">{formatCurrency(despesas)}</p>
-            </div>
-            <ArrowDownCircle className="w-8 h-8 text-red-400" />
-          </div>
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+          <ArrowCard
+            variant="stat"
+            className="stat-card-red"
+            label="Despesas"
+            value={formatCurrency(despesas)}
+            icon={
+              <div className="arrow-card-stat-icon" style={{ background: 'rgba(239,68,68,0.12)' }}>
+                <ArrowDownCircle className="w-5 h-5 text-red-500" />
+              </div>
+            }
+          />
         </motion.div>
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className={`arrow-card p-5 ${saldo >= 0 ? 'stat-card-blue' : 'stat-card-red'}`}>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="arrow-label">Saldo</p>
-              <p className={`text-xl font-bold mt-1 ${saldo >= 0 ? 'text-blue-700' : 'text-red-700'}`}>{formatCurrency(saldo)}</p>
-            </div>
-            <DollarSign className="w-8 h-8 text-blue-400" />
-          </div>
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+          <ArrowCard
+            variant="stat"
+            className={saldo >= 0 ? 'stat-card-blue' : 'stat-card-red'}
+            label="Saldo"
+            value={formatCurrency(saldo)}
+            trend={saldo >= 0 ? { value: 'positivo', positive: true } : { value: 'negativo', positive: false }}
+            icon={
+              <div className="arrow-card-stat-icon" style={{ background: theme.accentLight }}>
+                <DollarSign className="w-5 h-5" style={{ color: theme.accent }} />
+              </div>
+            }
+          />
         </motion.div>
       </div>
 

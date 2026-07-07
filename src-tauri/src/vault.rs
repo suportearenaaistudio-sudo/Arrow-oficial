@@ -112,6 +112,11 @@ impl VaultManager {
         let config = VaultConfig {
             version: VAULT_VERSION,
             theme: None,
+            color_theme: None,
+            background_effect: None,
+            rain_density: None,
+            glass_scope: None,
+            glass_opacity: None,
             visual_quality: None,
         };
 
@@ -185,6 +190,41 @@ impl VaultManager {
         let mut current = self.get_config()?;
         if let Some(theme) = partial.get("theme").and_then(|v| v.as_str()) {
             current.theme = Some(theme.to_string());
+        }
+        if let Some(ct) = partial
+            .get("colorTheme")
+            .or_else(|| partial.get("color_theme"))
+            .and_then(|v| v.as_str())
+        {
+            current.color_theme = Some(ct.to_string());
+        }
+        if let Some(be) = partial
+            .get("backgroundEffect")
+            .or_else(|| partial.get("background_effect"))
+            .and_then(|v| v.as_str())
+        {
+            current.background_effect = Some(be.to_string());
+        }
+        if let Some(rd) = partial
+            .get("rainDensity")
+            .or_else(|| partial.get("rain_density"))
+            .and_then(|v| v.as_f64())
+        {
+            current.rain_density = Some(rd);
+        }
+        if let Some(gs) = partial
+            .get("glassScope")
+            .or_else(|| partial.get("glass_scope"))
+            .and_then(|v| v.as_str())
+        {
+            current.glass_scope = Some(gs.to_string());
+        }
+        if let Some(go) = partial
+            .get("glassOpacity")
+            .or_else(|| partial.get("glass_opacity"))
+            .and_then(|v| v.as_f64())
+        {
+            current.glass_opacity = Some(go);
         }
         if let Some(vq) = partial
             .get("visualQuality")

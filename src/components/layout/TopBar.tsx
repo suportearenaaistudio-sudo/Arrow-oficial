@@ -1,12 +1,17 @@
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useVault } from '@/contexts/VaultContext';
 import { useSidebar } from '@/contexts/SidebarContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { usePlatformChrome, SIDEBAR_TRANSITION, TOPBAR_DESKTOP_PADDING_TOP } from '@/hooks/usePlatformChrome';
 import {
-  Search, Bell, Plus, Target, ListChecks, StickyNote,
-  PanelLeft, ChevronDown, LogOut, Settings,
+  Search, Bell, Target, ListChecks, StickyNote,
+  PanelLeft, ChevronDown, LogOut, Settings, X,
 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import FocusTimerPill from '@/components/layout/FocusTimerPill';
+import ThemeToggle from '@/components/layout/ThemeToggle';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 const quickActions = [
   { label: 'Nova Tarefa', icon: ListChecks, path: '/tasks' },
@@ -14,13 +19,18 @@ const quickActions = [
   { label: 'Nova Nota', icon: StickyNote, path: '/notes' },
 ];
 
-export default function TopBar() {
+export default function TopBar({ visible = true }: { visible?: boolean }) {
   const navigate = useNavigate();
   const { profile, closeVault, vaultPath } = useVault();
   const { collapsed, toggle } = useSidebar();
   const { theme, isDark } = useTheme();
+  const { isDesktopApp, topBarTotalHeight, trafficLightInset } = usePlatformChrome(collapsed);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const initials = (profile?.full_name || 'U').slice(0, 2).toUpperCase();
 
@@ -29,168 +39,242 @@ export default function TopBar() {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setProfileOpen(false);
       }
+      if (searchOpen && searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setSearchOpen(false);
+      }
     }
-    if (profileOpen) document.addEventListener('mousedown', handleClick);
+    document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
-  }, [profileOpen]);
+  }, [profileOpen, searchOpen]);
+
+  useEffect(() => {
+    if (searchOpen) {
+      const t = setTimeout(() => searchInputRef.current?.focus(), 120);
+      return () => clearTimeout(t);
+    }
+  }, [searchOpen]);
+
+  const controlHover = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)';
 
   return (
     <header
-      className="h-16 flex items-center gap-4 px-5 flex-shrink-0 relative z-20"
+      className="arrow-topbar flex items-center gap-2 px-3 flex-shrink-0 relative z-30"
+      data-hidden={visible ? undefined : 'true'}
       style={{
-        background: `linear-gradient(to bottom, ${theme.bgTopbar}, transparent)`,
+        height: topBarTotalHeight,
+        paddingTop: isDesktopApp ? TOPBAR_DESKTOP_PADDING_TOP : 0,
+        paddingLeft: trafficLightInset > 0 ? trafficLightInset : 12,
+        paddingRight: 12,
+        transition: `padding-left ${SIDEBAR_TRANSITION}`,
       }}
+      data-tauri-drag-region={isDesktopApp ? true : undefined}
     >
-      {/* Sidebar toggle */}
       <button
         onClick={toggle}
-        className="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200
-          hover:bg-white/10 dark:hover:bg-white/5"
+        className="w-8 h-8 rounded-md flex items-center justify-center transition-colors duration-150 flex-shrink-0"
         style={{ color: theme.textSecondary }}
         title={collapsed ? 'Expandir menu' : 'Recolher menu'}
+        onMouseEnter={(e) => (e.currentTarget.style.background = controlHover)}
+        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
       >
-        <PanelLeft className="w-[18px] h-[18px]" />
+        <PanelLeft className="w-[17px] h-[17px]" strokeWidth={1.5} />
       </button>
 
-      {/* Quick actions */}
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-0.5 flex-shrink-0">
         {quickActions.map((action) => (
-          <button
-            key={action.label}
-            onClick={() => navigate(action.path)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all duration-200"
-            style={{
-              color: theme.textSecondary,
-              background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
-              border: `1px solid ${theme.border}`,
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = theme.accentLight;
-              e.currentTarget.style.color = theme.accent;
-              e.currentTarget.style.borderColor = theme.accent + '40';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)';
-              e.currentTarget.style.color = theme.textSecondary;
-              e.currentTarget.style.borderColor = theme.border;
-            }}
-          >
-            <action.icon className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">{action.label}</span>
-          </button>
+          <Tooltip key={action.label} delayDuration={200}>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => navigate(action.path)}
+                className="w-8 h-8 rounded-md flex items-center justify-center transition-colors duration-150"
+                style={{ color: theme.textSecondary }}
+                aria-label={action.label}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = controlHover;
+                  e.currentTarget.style.color = theme.textPrimary;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = theme.textSecondary;
+                }}
+              >
+                <action.icon className="w-4 h-4" strokeWidth={1.5} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">
+              {action.label}
+            </TooltipContent>
+          </Tooltip>
         ))}
       </div>
 
-      {/* Spacer */}
-      <div className="flex-1" />
+      <div className="flex-1 min-w-0" />
 
-      {/* Search */}
-      <div className="w-full max-w-xs">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: theme.textMuted }} />
-          <input
-            type="text"
-            placeholder="Buscar..."
-            className="w-full pl-9 pr-4 py-2 rounded-2xl text-sm outline-none transition-all duration-200"
-            style={{
-              background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-              border: `1px solid ${theme.border}`,
-              color: theme.textPrimary,
-            }}
-            onFocus={(e) => {
-              e.currentTarget.style.borderColor = theme.accent + '60';
-              e.currentTarget.style.boxShadow = `0 0 0 3px ${theme.accentLight}`;
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = theme.border;
-              e.currentTarget.style.boxShadow = 'none';
-            }}
-          />
-        </div>
-      </div>
+      <div className="flex items-center gap-1.5 flex-shrink-0">
+        <FocusTimerPill />
+        <ThemeToggle />
 
-      {/* Notifications */}
-      <button
-        className="relative w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200
-          hover:bg-white/10 dark:hover:bg-white/5"
-        style={{ color: theme.textSecondary }}
-      >
-        <Bell className="w-[18px] h-[18px]" strokeWidth={1.8} />
-        <span
-          className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full"
-          style={{ background: theme.accent }}
-        />
-      </button>
+        <div ref={searchRef} className="relative flex items-center">
+          <AnimatePresence initial={false}>
+            {searchOpen && (
+              <motion.div
+                initial={{ width: 32, opacity: 0 }}
+                animate={{ width: 220, opacity: 1 }}
+                exit={{ width: 32, opacity: 0 }}
+                transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                className="overflow-hidden mr-1"
+              >
+                <div className="relative">
+                  <Search
+                    className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none"
+                    style={{ color: theme.textMuted }}
+                    strokeWidth={1.5}
+                  />
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Buscar..."
+                    className="w-full pl-8 pr-8 h-8 rounded-full text-[12px] outline-none"
+                    style={{
+                      background: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
+                      border: `1px solid ${theme.border}`,
+                      color: theme.textPrimary,
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = `${theme.accent}50`;
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = theme.border;
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => { setSearchOpen(false); setSearchQuery(''); }}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center"
+                    style={{ color: theme.textMuted }}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-      {/* Profile */}
-      <div className="relative" ref={dropdownRef}>
-        <button
-          onClick={() => setProfileOpen(!profileOpen)}
-          className="flex items-center gap-2.5 rounded-2xl px-2 py-1.5 transition-all duration-200"
-          style={{
-            background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
-            border: `1px solid ${theme.border}`,
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = theme.accentLight)}
-          onMouseLeave={(e) => (e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)')}
-        >
-          {profile?.avatar_url ? (
-            <img
-              src={profile.avatar_url}
-              alt={profile.full_name || ''}
-              className="w-7 h-7 rounded-lg object-cover"
-            />
-          ) : (
-            <div
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold"
-              style={{
-                background: `linear-gradient(135deg, ${theme.gradientFrom}, ${theme.gradientTo})`,
-                color: isDark ? '#0B0B0B' : 'white',
-              }}
+          {!searchOpen && (
+            <button
+              type="button"
+              onClick={() => setSearchOpen(true)}
+              className="w-8 h-8 rounded-full flex items-center justify-center transition-colors duration-150"
+              style={{ color: theme.textSecondary }}
+              title="Buscar"
+              onMouseEnter={(e) => (e.currentTarget.style.background = controlHover)}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             >
-              {initials}
-            </div>
+              <Search className="w-[17px] h-[17px]" strokeWidth={1.5} />
+            </button>
           )}
-          <span className="text-xs font-medium hidden sm:inline" style={{ color: theme.textPrimary }}>
-            {profile?.full_name || 'Usuario'}
-          </span>
-          <ChevronDown className="w-3 h-3" style={{ color: theme.textMuted }} />
+        </div>
+
+        <button
+          className="relative w-8 h-8 rounded-md flex items-center justify-center transition-colors duration-150 flex-shrink-0"
+          style={{ color: theme.textSecondary }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = controlHover)}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+        >
+          <Bell className="w-[17px] h-[17px]" strokeWidth={1.5} />
+          <span
+            className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full"
+            style={{ background: theme.accent }}
+          />
         </button>
 
-        {profileOpen && (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setProfileOpen(false)} />
-            <div
-              className="absolute right-0 top-full mt-2 w-52 rounded-2xl py-1.5 z-50 shadow-2xl"
-              style={{
-                background: isDark ? '#1a1a1a' : 'white',
-                border: `1px solid ${theme.border}`,
-              }}
-            >
-              <div className="px-3 py-2.5" style={{ borderBottom: `1px solid ${theme.border}` }}>
-                <p className="text-sm font-semibold" style={{ color: theme.textPrimary }}>{profile?.full_name}</p>
-                <p className="text-[11px] truncate max-w-[180px]" style={{ color: theme.textMuted }} title={vaultPath || ''}>{vaultPath?.split('/').pop() || 'Vault'}</p>
+        <div className="relative flex-shrink-0" ref={dropdownRef}>
+          <button
+            onClick={() => setProfileOpen(!profileOpen)}
+            className="flex items-center gap-1.5 h-8 rounded-full px-2 transition-colors duration-150"
+            style={{
+              background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+              border: `1px solid ${theme.border}`,
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = theme.accentLight)}
+            onMouseLeave={(e) =>
+              (e.currentTarget.style.background = isDark
+                ? 'rgba(255,255,255,0.04)'
+                : 'rgba(0,0,0,0.03)')
+            }
+          >
+            {profile?.avatar_url ? (
+              <img
+                src={profile.avatar_url}
+                alt={profile.full_name || ''}
+                className="w-5 h-5 rounded-full object-cover"
+              />
+            ) : (
+              <div
+                className="w-5 h-5 rounded flex items-center justify-center text-[8px] font-bold"
+                style={{
+                  background: `linear-gradient(135deg, ${theme.gradientFrom}, ${theme.gradientTo})`,
+                  color: isDark ? '#000' : '#fff',
+                }}
+              >
+                {initials}
               </div>
-              <button
-                onClick={() => { navigate('/settings'); setProfileOpen(false); }}
-                className="w-full text-left px-3 py-2 text-sm transition-colors flex items-center gap-2"
-                style={{ color: theme.textSecondary }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = theme.accentLight)}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            )}
+            <span className="text-[11px] font-medium hidden sm:inline" style={{ color: theme.textPrimary }}>
+              {profile?.full_name || 'Usuario'}
+            </span>
+            <ChevronDown className="w-2.5 h-2.5" style={{ color: theme.textMuted }} />
+          </button>
+
+          {profileOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setProfileOpen(false)} />
+              <div
+                className="absolute right-0 top-full mt-2 w-52 rounded-xl py-1.5 z-50"
+                style={{
+                  background: isDark ? '#1c1c1e' : '#ffffff',
+                  border: `1px solid ${theme.border}`,
+                  boxShadow: 'var(--arrow-rim-light), 0 8px 32px rgba(0,0,0,0.2)',
+                }}
               >
-                <Settings className="w-3.5 h-3.5" /> Configuracoes
-              </button>
-              <button
-                onClick={() => closeVault()}
-                className="w-full text-left px-3 py-2 text-sm text-red-500 transition-colors flex items-center gap-2"
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239,68,68,0.06)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-              >
-                <LogOut className="w-3.5 h-3.5" /> Fechar vault
-              </button>
-            </div>
-          </>
-        )}
+                <div className="px-3 py-2.5" style={{ borderBottom: `1px solid ${theme.border}` }}>
+                  <p className="text-sm font-semibold" style={{ color: theme.textPrimary }}>
+                    {profile?.full_name}
+                  </p>
+                  <p
+                    className="text-[11px] truncate max-w-[180px]"
+                    style={{ color: theme.textMuted }}
+                    title={vaultPath || ''}
+                  >
+                    {vaultPath?.split('/').pop() || 'Vault'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    navigate('/settings');
+                    setProfileOpen(false);
+                  }}
+                  className="w-full text-left px-3 py-2 text-sm transition-colors flex items-center gap-2"
+                  style={{ color: theme.textSecondary }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = theme.accentLight)}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <Settings className="w-3.5 h-3.5" /> Configuracoes
+                </button>
+                <button
+                  onClick={() => closeVault()}
+                  className="w-full text-left px-3 py-2 text-sm text-red-500 transition-colors flex items-center gap-2"
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239,68,68,0.06)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <LogOut className="w-3.5 h-3.5" /> Fechar vault
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </header>
   );

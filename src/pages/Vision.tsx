@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Eye, Edit3, Save, X, TrendingUp, TrendingDown, Minus, CheckCircle2, Circle } from 'lucide-react';
+import { Eye, Edit3, Save, X, TrendingUp, TrendingDown, Minus, CheckCircle2, Circle, Target } from 'lucide-react';
 import { useVision, VISION_AREAS } from '@/hooks/useVision';
 import { useCycles, getCurrentWeek } from '@/hooks/useCycles';
 import { useWeeklyScores } from '@/hooks/useWeeklyScores';
@@ -157,8 +157,10 @@ export default function Vision() {
         className="arrow-card p-5">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm"
-              style={{ background: theme.accentLight }}>🎯</div>
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center"
+              style={{ background: theme.accentLight }}>
+              <Target className="w-4 h-4" style={{ color: theme.accent }} />
+            </div>
             <div>
               <h2 className="font-bold text-sm" style={{ color: theme.textPrimary }}>Visão das 12 Semanas</h2>
               <p className="text-xs" style={{ color: theme.textMuted }}>
@@ -238,6 +240,7 @@ export default function Vision() {
           {VISION_AREAS.map((area, i) => {
             const value = vision?.[area.key] || '';
             const isEditingThis = editing5y === area.key;
+            const AreaIcon = area.icon;
 
             return (
               <motion.div key={area.key}
@@ -247,7 +250,7 @@ export default function Vision() {
                 className="arrow-card p-4">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-lg">{area.emoji}</span>
+                    <AreaIcon className="w-4 h-4" style={{ color: theme.accent }} />
                     <span className="text-sm font-semibold" style={{ color: theme.textPrimary }}>{area.label}</span>
                   </div>
                   {!isEditingThis && (

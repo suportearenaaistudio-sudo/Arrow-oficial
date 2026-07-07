@@ -386,7 +386,7 @@ export default function Planning() {
 
             {/* Highlight */}
             <div>
-              <label className="arrow-label block mb-1.5">🏆 Destaque do dia</label>
+              <label className="arrow-label block mb-1.5">Destaque do dia</label>
               <input type="text" value={checkinForm.highlight}
                 onChange={e => setCheckinForm(f => ({ ...f, highlight: e.target.value }))}
                 className="w-full px-4 py-2.5 rounded-xl text-sm focus:outline-none"
@@ -396,7 +396,7 @@ export default function Planning() {
 
             {/* Tomorrow focus */}
             <div>
-              <label className="arrow-label block mb-1.5">🎯 Foco de amanhã</label>
+              <label className="arrow-label block mb-1.5">Foco de amanha</label>
               <input type="text" value={checkinForm.tomorrow_focus}
                 onChange={e => setCheckinForm(f => ({ ...f, tomorrow_focus: e.target.value }))}
                 className="w-full px-4 py-2.5 rounded-xl text-sm focus:outline-none"
@@ -462,8 +462,8 @@ export default function Planning() {
                           <span className="text-xs" style={{ color: moodCfg?.color }}>{moodCfg?.label}</span>
                           <span className="text-xs" style={{ color: theme.textMuted }}>· {c.productivity_score}/10</span>
                         </div>
-                        {c.highlight && <p className="text-xs mt-0.5" style={{ color: theme.textSecondary }}>🏆 {c.highlight}</p>}
-                        {c.tomorrow_focus && <p className="text-xs" style={{ color: theme.textMuted }}>🎯 {c.tomorrow_focus}</p>}
+                        {c.highlight && <p className="text-xs mt-0.5" style={{ color: theme.textSecondary }}>{c.highlight}</p>}
+                        {c.tomorrow_focus && <p className="text-xs" style={{ color: theme.textMuted }}>{c.tomorrow_focus}</p>}
                       </div>
                     </div>
                   );
@@ -482,7 +482,7 @@ export default function Planning() {
                 placeholder="O que impediu sua execução esta semana?" />
             </div>
             <div>
-              <label className="arrow-label block mb-1.5">💡 Aprendizado da semana</label>
+              <label className="arrow-label block mb-1.5">Aprendizado da semana</label>
               <textarea value={reportForm.lessons}
                 onChange={e => setReportForm(f => ({ ...f, lessons: e.target.value }))}
                 className="w-full px-4 py-2.5 rounded-xl text-sm resize-none h-20 focus:outline-none"

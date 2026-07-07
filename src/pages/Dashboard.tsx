@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { Compass, Target, CheckSquare, Flame, DollarSign, Heart, Smile, Meh, Frown, TrendingUp, Plus } from 'lucide-react';
+import { ArrowCard } from '@/components/ui/ArrowCard';
 import { useCycles, getCurrentWeek, getCycleProgress } from '@/hooks/useCycles';
 import { useGoals } from '@/hooks/useGoals';
 import { useTasks } from '@/hooks/useTasks';
@@ -114,17 +115,20 @@ export default function Dashboard() {
           </div>
         </motion.div>
 
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="arrow-card p-5 stat-card-green">
-          <div className="flex items-center justify-between mb-2">
-            <p className="arrow-label">Finanças</p>
-            <DollarSign className="w-5 h-5 text-green-500" />
-          </div>
-          <div className="space-y-1 text-xs">
-            <div className="flex justify-between"><span className="text-green-600">Receitas</span><span className="font-semibold text-green-700">{formatCurrency(receitas)}</span></div>
-            <div className="flex justify-between"><span className="text-red-500">Despesas</span><span className="font-semibold text-red-600">{formatCurrency(despesas)}</span></div>
-            <div className="flex justify-between border-t border-gray-200 pt-1"><span className="font-medium">Saldo</span><span className={`font-bold ${saldo >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatCurrency(saldo)}</span></div>
-          </div>
-          <button onClick={() => navigate('/finances')} className="text-[10px] text-orange-600 font-medium mt-2 hover:text-orange-700">Ver Detalhes</button>
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+          <ArrowCard
+            variant="stat"
+            className="p-5 stat-card-green"
+            label="Financas do mes"
+            value={formatCurrency(saldo)}
+            trend={saldo >= 0 ? { value: `${formatCurrency(receitas)} receitas`, positive: true } : { value: `${formatCurrency(despesas)} despesas`, positive: false }}
+            icon={
+              <div className="arrow-card-stat-icon" style={{ background: 'rgba(34,197,94,0.15)' }}>
+                <DollarSign className="w-5 h-5 text-green-500" />
+              </div>
+            }
+            onCardClick={() => navigate('/finances')}
+          />
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="arrow-card p-5 stat-card-purple">

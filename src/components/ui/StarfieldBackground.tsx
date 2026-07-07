@@ -206,7 +206,7 @@ export const StarfieldBackground = memo(function StarfieldBackground({ isDark = 
     <canvas
       ref={canvasRef}
       aria-hidden="true"
-      className="pointer-events-none fixed inset-0 z-0"
+      className="pointer-events-none fixed inset-0 z-[3]"
       style={{ contain: 'strict', transform: 'translateZ(0)' }}
     />
   );

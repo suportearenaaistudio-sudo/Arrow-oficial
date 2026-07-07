@@ -83,7 +83,14 @@ pub fn run() {
             commands::notes_create,
             commands::notes_update,
             commands::notes_delete,
+            commands::sync_window_vibrancy,
+            commands::clear_window_vibrancy,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Ready = event {
+                let _ = commands::sync_window_vibrancy(app_handle.clone(), false);
+            }
+        });
 }

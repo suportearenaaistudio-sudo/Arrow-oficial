@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Calendar, Play, Pause, Trash2, Edit2, Plus, Clock, Target, Repeat, ChevronRight, Eye } from 'lucide-react';
+import { Calendar, Play, Pause, Trash2, Edit2, Plus, Clock, Target, Repeat, ChevronRight, Eye, Sprout, Briefcase, Dumbbell, Heart, Palette, Wallet, BookOpen, Scale, RefreshCw } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { useCycles, getCurrentWeek, getCycleProgress } from '@/hooks/useCycles';
 import { useWeeklyScores } from '@/hooks/useWeeklyScores';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -10,15 +11,15 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import type { Cycle, CycleCategory } from '@/types/arrow';
 import { useNavigate } from 'react-router-dom';
 
-const categoryConfig: Record<CycleCategory, { label: string; emoji: string }> = {
-  crescimento: { label: 'Crescimento Pessoal', emoji: '🌱' },
-  profissional: { label: 'Carreira e Negócios', emoji: '💼' },
-  saude: { label: 'Saúde e Bem-estar', emoji: '💪' },
-  relacionamentos: { label: 'Relacionamentos', emoji: '❤️' },
-  criatividade: { label: 'Arte e Criatividade', emoji: '🎨' },
-  financeiro: { label: 'Finanças Pessoais', emoji: '💰' },
-  aprendizado: { label: 'Estudos e Habilidades', emoji: '📚' },
-  equilibrio: { label: 'Equilíbrio de Vida', emoji: '⚖️' },
+const categoryConfig: Record<CycleCategory, { label: string; icon: LucideIcon }> = {
+  crescimento: { label: 'Crescimento Pessoal', icon: Sprout },
+  profissional: { label: 'Carreira e Negocios', icon: Briefcase },
+  saude: { label: 'Saude e Bem-estar', icon: Dumbbell },
+  relacionamentos: { label: 'Relacionamentos', icon: Heart },
+  criatividade: { label: 'Arte e Criatividade', icon: Palette },
+  financeiro: { label: 'Financas Pessoais', icon: Wallet },
+  aprendizado: { label: 'Estudos e Habilidades', icon: BookOpen },
+  equilibrio: { label: 'Equilibrio de Vida', icon: Scale },
 };
 
 const emptyForm = {
@@ -69,7 +70,10 @@ function CycleCard({ cycle, onEdit }: { cycle: Cycle; onEdit: (c: Cycle) => void
         {/* Header row */}
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            <span className="text-xl">{cat?.emoji || '🔄'}</span>
+            {(() => {
+              const CatIcon = cat?.icon || RefreshCw;
+              return <CatIcon className="w-5 h-5 flex-shrink-0" style={{ color: theme.accent }} />;
+            })()}
             <div className="min-w-0">
               <h3 className="text-base font-bold truncate" style={{ color: theme.textPrimary }}>{cycle.title}</h3>
               <span className="text-xs" style={{ color: theme.textMuted }}>{cat?.label || 'Sem categoria'}</span>
@@ -340,8 +344,8 @@ export default function Cycles() {
                       className="w-full px-4 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2"
                       style={{ borderColor: theme.border, color: theme.textPrimary, background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.02)' }}>
                       <option value="">Selecione...</option>
-                      {Object.entries(categoryConfig).map(([key, { label, emoji }]) => (
-                        <option key={key} value={key}>{emoji} {label}</option>
+                      {Object.entries(categoryConfig).map(([key, { label }]) => (
+                        <option key={key} value={key}>{label}</option>
                       ))}
                     </select>
                   </div>
@@ -357,7 +361,7 @@ export default function Cycles() {
                 <>
                   <div>
                     <label className="arrow-label block mb-1.5">
-                      🎯 Visão das 12 Semanas
+                      Visao das 12 Semanas
                       <span className="text-xs ml-1 font-normal" style={{ color: theme.textMuted }}>— O que quer conquistar?</span>
                     </label>
                     <textarea value={form.vision}

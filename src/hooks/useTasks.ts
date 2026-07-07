@@ -48,11 +48,34 @@ export function useTasks() {
       }
       await desktopAPI.db.tasks.update({ id, ...updates });
     },
+    onMutate: async ({ id, status }) => {
+      const key = ['tasks', profile?.id];
+      await queryClient.cancelQueries({ queryKey: ['tasks'] });
+      const previous = queryClient.getQueryData<Task[]>(key);
+      queryClient.setQueryData<Task[]>(key, (old) =>
+        (old ?? []).map((t) =>
+          t.id === id
+            ? {
+                ...t,
+                status,
+                ...(status === 'concluida'
+                  ? { completion_date: new Date().toISOString().split('T')[0] }
+                  : {}),
+              }
+            : t,
+        ),
+      );
+      return { previous };
+    },
     onSuccess: (_, { status }) => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
       if (status === 'concluida') showSuccess('Tarefa concluida!');
     },
-    onError: () => showError('Erro ao mover tarefa'),
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['tasks', profile?.id], context.previous);
+      }
+      showError('Erro ao mover tarefa');
+    },
   });
 
   const deleteTask = useMutation({
