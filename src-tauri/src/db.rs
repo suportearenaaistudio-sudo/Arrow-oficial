@@ -14,6 +14,10 @@ fn json_fields(table: &str) -> &'static [&'static str] {
         "goals" => &["sub_goals", "milestones", "weekly_targets"],
         "tasks" => &["tags", "subtasks", "comments", "attachments"],
         "habits" => &["days_of_week", "completion_history"],
+        "workout_programs" => &["schedule"],
+        "workout_templates" => &["exercises"],
+        "workout_sessions" => &["exercises_log"],
+        "media_list_items" => &["tags"],
         _ => &[],
     }
 }
@@ -21,6 +25,8 @@ fn json_fields(table: &str) -> &'static [&'static str] {
 fn bool_fields(table: &str) -> &'static [&'static str] {
     match table {
         "tasks" => &["important"],
+        "workout_programs" => &["is_active"],
+        "media_lists" => &["is_system"],
         _ => &[],
     }
 }
@@ -172,17 +178,76 @@ impl ArrowDatabase {
 
     pub fn init(&self) -> Result<(), String> {
         self.conn.execute_batch(SCHEMA_SQL).map_err(|e| e.to_string())?;
-        let exists: Option<i32> = self
+        let current: i32 = self
             .conn
             .query_row("SELECT version FROM schema_version LIMIT 1", [], |row| row.get(0))
-            .ok();
-        if exists.is_none() {
+            .unwrap_or(0);
+        if current == 0 {
             self.conn
                 .execute(
                     "INSERT INTO schema_version (version) VALUES (?)",
                     params![crate::types::SCHEMA_VERSION],
                 )
                 .map_err(|e| e.to_string())?;
+        } else if current < crate::types::SCHEMA_VERSION {
+            self.migrate_schema(current)?;
+            self.conn
+                .execute(
+                    "UPDATE schema_version SET version = ?",
+                    params![crate::types::SCHEMA_VERSION],
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
+    fn migrate_schema(&self, from: i32) -> Result<(), String> {
+        if from < 3 {
+            let _ = self.conn.execute(
+                "ALTER TABLE workout_programs ADD COLUMN frequency_per_week INTEGER",
+                [],
+            );
+            let _ = self.conn.execute(
+                "ALTER TABLE workout_programs ADD COLUMN focus TEXT",
+                [],
+            );
+        }
+        Ok(())
+    }
+
+    pub fn seed_default_media_lists(&self, user_id: &str) -> Result<(), String> {
+        let count: i32 = self
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM media_lists WHERE user_id = ? AND is_system = 1",
+                params![user_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if count > 0 {
+            return Ok(());
+        }
+        let defaults = [
+            ("filmes", "Filmes", 0),
+            ("series", "Séries", 1),
+            ("animes", "Animes", 2),
+            ("animacao", "Animação", 3),
+            ("jogos", "Jogos", 4),
+            ("esportes", "Esportes", 5),
+            ("livros", "Livros", 6),
+        ];
+        let ts = now_iso();
+        for (list_type, name, sort_order) in defaults {
+            let mut row = Map::new();
+            row.insert("id".to_string(), json!(Uuid::new_v4().to_string()));
+            row.insert("user_id".to_string(), json!(user_id));
+            row.insert("name".to_string(), json!(name));
+            row.insert("list_type".to_string(), json!(list_type));
+            row.insert("is_system".to_string(), json!(true));
+            row.insert("sort_order".to_string(), json!(sort_order));
+            row.insert("created_at".to_string(), json!(ts));
+            row.insert("updated_at".to_string(), json!(ts));
+            insert_row(&self.conn, "media_lists", row)?;
         }
         Ok(())
     }
@@ -791,5 +856,397 @@ impl ArrowDatabase {
                 m
             });
         Ok(row)
+    }
+
+    // ─── Workout programs ─────────────────────────────────────
+
+    pub fn list_workout_programs(&self, user_id: &str) -> Result<Vec<Map<String, Value>>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT * FROM workout_programs WHERE user_id = ? ORDER BY created_at DESC")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![user_id], |row| row_to_map(row))
+            .map_err(|e| e.to_string())?;
+        rows.map(|r| r.map(|row| parse_row("workout_programs", row)))
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn create_workout_program(&self, user_id: &str, data: Value) -> Result<Map<String, Value>, String> {
+        let ts = now_iso();
+        let mut row = value_to_map(data);
+        row.insert("user_id".to_string(), json!(user_id));
+        row.entry("schedule".to_string()).or_insert(json!([]));
+        row.entry("is_active".to_string()).or_insert(json!(true));
+        row.insert("created_at".to_string(), json!(ts));
+        row.insert("updated_at".to_string(), json!(ts));
+        let id = insert_row(&self.conn, "workout_programs", row)?;
+        get_by_id(&self.conn, "workout_programs", &id)
+    }
+
+    pub fn update_workout_program(&self, id: &str, updates: Value) -> Result<Map<String, Value>, String> {
+        let mut row = value_to_map(updates);
+        row.insert("updated_at".to_string(), json!(now_iso()));
+        update_row(&self.conn, "workout_programs", id, row)?;
+        get_by_id(&self.conn, "workout_programs", id)
+    }
+
+    pub fn delete_workout_program(&self, id: &str) -> Result<(), String> {
+        self.conn
+            .execute("DELETE FROM workout_sessions WHERE program_id = ?", params![id])
+            .map_err(|e| e.to_string())?;
+        self.conn
+            .execute("DELETE FROM workout_templates WHERE program_id = ?", params![id])
+            .map_err(|e| e.to_string())?;
+        self.conn
+            .execute("DELETE FROM workout_programs WHERE id = ?", params![id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    // ─── Workout templates ────────────────────────────────────
+
+    pub fn list_workout_templates(&self, program_id: &str) -> Result<Vec<Map<String, Value>>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT * FROM workout_templates WHERE program_id = ? ORDER BY label ASC")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![program_id], |row| row_to_map(row))
+            .map_err(|e| e.to_string())?;
+        rows.map(|r| r.map(|row| parse_row("workout_templates", row)))
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn create_workout_template(&self, user_id: &str, data: Value) -> Result<Map<String, Value>, String> {
+        let ts = now_iso();
+        let mut row = value_to_map(data);
+        row.insert("user_id".to_string(), json!(user_id));
+        row.entry("exercises".to_string()).or_insert(json!([]));
+        row.insert("created_at".to_string(), json!(ts));
+        row.insert("updated_at".to_string(), json!(ts));
+        let id = insert_row(&self.conn, "workout_templates", row)?;
+        get_by_id(&self.conn, "workout_templates", &id)
+    }
+
+    pub fn update_workout_template(&self, id: &str, updates: Value) -> Result<Map<String, Value>, String> {
+        let mut row = value_to_map(updates);
+        row.insert("updated_at".to_string(), json!(now_iso()));
+        update_row(&self.conn, "workout_templates", id, row)?;
+        get_by_id(&self.conn, "workout_templates", id)
+    }
+
+    pub fn delete_workout_template(&self, id: &str) -> Result<(), String> {
+        self.conn
+            .execute("DELETE FROM workout_sessions WHERE template_id = ?", params![id])
+            .map_err(|e| e.to_string())?;
+        self.conn
+            .execute("DELETE FROM workout_templates WHERE id = ?", params![id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    // ─── Workout sessions ─────────────────────────────────────
+
+    pub fn list_workout_sessions(
+        &self,
+        user_id: &str,
+        filters: Option<Value>,
+    ) -> Result<Vec<Map<String, Value>>, String> {
+        let mut sql = String::from("SELECT * FROM workout_sessions WHERE user_id = ?");
+        let f = filters.unwrap_or(json!({}));
+        let mut bind: Vec<SqlValue> = vec![SqlValue::Text(user_id.to_string())];
+        if let Some(pid) = f.get("program_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+            sql.push_str(" AND program_id = ?");
+            bind.push(SqlValue::Text(pid.to_string()));
+        }
+        if let Some(cid) = f.get("cycle_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+            sql.push_str(" AND cycle_id = ?");
+            bind.push(SqlValue::Text(cid.to_string()));
+        }
+        if let Some(wn) = f.get("week_number").and_then(|v| v.as_i64()) {
+            sql.push_str(" AND week_number = ?");
+            bind.push(SqlValue::Integer(wn));
+        }
+        if let Some(date) = f.get("date").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+            sql.push_str(" AND date = ?");
+            bind.push(SqlValue::Text(date.to_string()));
+        }
+        sql.push_str(" ORDER BY date ASC");
+        let mut stmt = self.conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(bind.iter()), |row| row_to_map(row))
+            .map_err(|e| e.to_string())?;
+        rows.map(|r| r.map(|row| parse_row("workout_sessions", row)))
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn create_workout_session(&self, user_id: &str, data: Value) -> Result<Map<String, Value>, String> {
+        let ts = now_iso();
+        let mut row = value_to_map(data);
+        row.insert("user_id".to_string(), json!(user_id));
+        row.entry("exercises_log".to_string()).or_insert(json!([]));
+        row.entry("status".to_string()).or_insert(json!("a_fazer"));
+        row.insert("created_at".to_string(), json!(ts));
+        row.insert("updated_at".to_string(), json!(ts));
+        let id = insert_row(&self.conn, "workout_sessions", row)?;
+        get_by_id(&self.conn, "workout_sessions", &id)
+    }
+
+    pub fn update_workout_session(&self, id: &str, updates: Value) -> Result<Map<String, Value>, String> {
+        let mut row = value_to_map(updates);
+        row.insert("updated_at".to_string(), json!(now_iso()));
+        update_row(&self.conn, "workout_sessions", id, row)?;
+        get_by_id(&self.conn, "workout_sessions", &id)
+    }
+
+    pub fn delete_workout_session(&self, id: &str) -> Result<(), String> {
+        self.conn
+            .execute("DELETE FROM workout_sessions WHERE id = ?", params![id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn complete_workout_session(
+        &self,
+        id: &str,
+        exercises_log: Value,
+        duration_minutes: Option<i64>,
+    ) -> Result<Map<String, Value>, String> {
+        let mut updates = Map::new();
+        updates.insert("status".to_string(), json!("feito"));
+        updates.insert("exercises_log".to_string(), exercises_log);
+        if let Some(d) = duration_minutes {
+            updates.insert("duration_minutes".to_string(), json!(d));
+        }
+        self.update_workout_session(id, Value::Object(updates))
+    }
+
+    pub fn get_exercise_progress(
+        &self,
+        user_id: &str,
+        exercise_name: &str,
+    ) -> Result<Vec<Map<String, Value>>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT date, exercises_log FROM workout_sessions WHERE user_id = ? AND status = 'feito' ORDER BY date ASC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![user_id], |row| row_to_map(row))
+            .map_err(|e| e.to_string())?;
+        let mut progress = Vec::new();
+        for row in rows {
+            let row = row.map_err(|e| e.to_string())?;
+            let date = row.get("date").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let log_str = row.get("exercises_log").and_then(|v| v.as_str()).unwrap_or("[]");
+            let log: Value = serde_json::from_str(log_str).unwrap_or(json!([]));
+            if let Some(arr) = log.as_array() {
+                for entry in arr {
+                    if entry.get("name").and_then(|v| v.as_str()) == Some(exercise_name) {
+                        let max_load = entry
+                            .get("sets")
+                            .and_then(|s| s.as_array())
+                            .map(|sets| {
+                                sets.iter()
+                                    .filter_map(|set| set.get("load_kg").and_then(|v| v.as_f64()))
+                                    .fold(0.0_f64, f64::max)
+                            })
+                            .unwrap_or(0.0);
+                        let mut point = Map::new();
+                        point.insert("date".to_string(), json!(date));
+                        point.insert("max_load_kg".to_string(), json!(max_load));
+                        progress.push(point);
+                    }
+                }
+            }
+        }
+        Ok(progress)
+    }
+
+    pub fn generate_week_sessions(
+        &self,
+        user_id: &str,
+        program_id: &str,
+        cycle_id: &str,
+        week_number: i64,
+        week_dates: Value,
+    ) -> Result<Vec<Map<String, Value>>, String> {
+        let program = get_by_id(&self.conn, "workout_programs", program_id)?;
+        let schedule = program
+            .get("schedule")
+            .cloned()
+            .unwrap_or(json!([]));
+        let dates = week_dates.as_array().cloned().unwrap_or_default();
+        let mut created = Vec::new();
+        if let Some(entries) = schedule.as_array() {
+            for entry in entries {
+                let day = entry.get("day").and_then(|v| v.as_i64()).unwrap_or(0) as usize;
+                let template_id = entry
+                    .get("template_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if template_id.is_empty() || day >= dates.len() {
+                    continue;
+                }
+                let date = dates[day].as_str().unwrap_or("").to_string();
+                if date.is_empty() {
+                    continue;
+                }
+                let existing: i32 = self
+                    .conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM workout_sessions WHERE user_id = ? AND program_id = ? AND date = ?",
+                        params![user_id, program_id, date],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(0);
+                if existing > 0 {
+                    continue;
+                }
+                let template = get_by_id(&self.conn, "workout_templates", template_id)?;
+                let template_name = template.get("name").and_then(|v| v.as_str()).unwrap_or("Treino");
+                let label = template.get("label").and_then(|v| v.as_str()).unwrap_or("");
+
+                let mut task_row = Map::new();
+                task_row.insert("title".to_string(), json!(format!("Treino {} — {}", label, template_name)));
+                task_row.insert("status".to_string(), json!("a_fazer"));
+                task_row.insert("priority".to_string(), json!("media"));
+                task_row.insert("cycle_id".to_string(), json!(cycle_id));
+                task_row.insert("week_number".to_string(), json!(week_number));
+                task_row.insert("tags".to_string(), json!(["treino"]));
+                let task = self.create_task(user_id, Value::Object(task_row))?;
+                let task_id = task.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+                let mut session_row = Map::new();
+                session_row.insert("program_id".to_string(), json!(program_id));
+                session_row.insert("template_id".to_string(), json!(template_id));
+                session_row.insert("date".to_string(), json!(date));
+                session_row.insert("status".to_string(), json!("a_fazer"));
+                session_row.insert("cycle_id".to_string(), json!(cycle_id));
+                session_row.insert("week_number".to_string(), json!(week_number));
+                session_row.insert("task_id".to_string(), json!(task_id));
+                let session = self.create_workout_session(user_id, Value::Object(session_row))?;
+                created.push(session);
+            }
+        }
+        Ok(created)
+    }
+
+    // ─── Media lists ──────────────────────────────────────────
+
+    pub fn list_media_lists(&self, user_id: &str) -> Result<Vec<Map<String, Value>>, String> {
+        self.seed_default_media_lists(user_id)?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT * FROM media_lists WHERE user_id = ? ORDER BY is_system DESC, sort_order ASC, created_at ASC")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![user_id], |row| row_to_map(row))
+            .map_err(|e| e.to_string())?;
+        rows.map(|r| r.map(|row| parse_row("media_lists", row)))
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn create_media_list(&self, user_id: &str, data: Value) -> Result<Map<String, Value>, String> {
+        let ts = now_iso();
+        let mut row = value_to_map(data);
+        row.insert("user_id".to_string(), json!(user_id));
+        row.entry("is_system".to_string()).or_insert(json!(false));
+        row.entry("sort_order".to_string()).or_insert(json!(99));
+        row.insert("created_at".to_string(), json!(ts));
+        row.insert("updated_at".to_string(), json!(ts));
+        let id = insert_row(&self.conn, "media_lists", row)?;
+        get_by_id(&self.conn, "media_lists", &id)
+    }
+
+    pub fn update_media_list(&self, id: &str, updates: Value) -> Result<Map<String, Value>, String> {
+        let mut row = value_to_map(updates);
+        row.insert("updated_at".to_string(), json!(now_iso()));
+        update_row(&self.conn, "media_lists", id, row)?;
+        get_by_id(&self.conn, "media_lists", &id)
+    }
+
+    pub fn delete_media_list(&self, id: &str) -> Result<(), String> {
+        let row = get_by_id(&self.conn, "media_lists", id)?;
+        let is_system = row
+            .get("is_system")
+            .map(|v| v.as_bool().unwrap_or(false) || v.as_i64().unwrap_or(0) != 0)
+            .unwrap_or(false);
+        if is_system {
+            return Err("Listas padrão não podem ser excluídas".to_string());
+        }
+        self.conn
+            .execute("DELETE FROM media_list_items WHERE list_id = ?", params![id])
+            .map_err(|e| e.to_string())?;
+        self.conn
+            .execute("DELETE FROM media_lists WHERE id = ?", params![id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    // ─── Media list items ─────────────────────────────────────
+
+    pub fn list_media_items(&self, list_id: &str) -> Result<Vec<Map<String, Value>>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT * FROM media_list_items WHERE list_id = ? ORDER BY CASE status WHEN 'top' THEN 0 WHEN 'visto' THEN 1 ELSE 2 END, rank ASC NULLS LAST, created_at DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![list_id], |row| row_to_map(row))
+            .map_err(|e| e.to_string())?;
+        rows.map(|r| r.map(|row| parse_row("media_list_items", row)))
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn create_media_item(&self, user_id: &str, data: Value) -> Result<Map<String, Value>, String> {
+        let ts = now_iso();
+        let mut row = value_to_map(data);
+        row.insert("user_id".to_string(), json!(user_id));
+        row.entry("tags".to_string()).or_insert(json!([]));
+        row.entry("status".to_string()).or_insert(json!("a_ver"));
+        row.insert("created_at".to_string(), json!(ts));
+        row.insert("updated_at".to_string(), json!(ts));
+        let id = insert_row(&self.conn, "media_list_items", row)?;
+        get_by_id(&self.conn, "media_list_items", &id)
+    }
+
+    pub fn update_media_item(&self, id: &str, updates: Value) -> Result<Map<String, Value>, String> {
+        let mut row = value_to_map(updates);
+        row.insert("updated_at".to_string(), json!(now_iso()));
+        update_row(&self.conn, "media_list_items", id, row)?;
+        get_by_id(&self.conn, "media_list_items", &id)
+    }
+
+    pub fn delete_media_item(&self, id: &str) -> Result<(), String> {
+        self.conn
+            .execute("DELETE FROM media_list_items WHERE id = ?", params![id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn move_media_item(
+        &self,
+        id: &str,
+        status: &str,
+        rank: Option<i64>,
+    ) -> Result<Map<String, Value>, String> {
+        let mut updates = Map::new();
+        updates.insert("status".to_string(), json!(status));
+        if let Some(r) = rank {
+            updates.insert("rank".to_string(), json!(r));
+        }
+        if status == "visto" {
+            updates.insert("completed_at".to_string(), json!(chrono::Utc::now().format("%Y-%m-%d").to_string()));
+        }
+        self.update_media_item(id, Value::Object(updates))
     }
 }

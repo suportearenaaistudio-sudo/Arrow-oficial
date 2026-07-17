@@ -26,6 +26,8 @@ import Settings from "./pages/Settings";
 import Vision from "./pages/Vision";
 import Pomodoro from "./pages/Pomodoro";
 import Assistant from "./pages/Assistant";
+import Workouts from "./pages/Workouts";
+import Lists from "./pages/Lists";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -56,7 +58,9 @@ const App = () => (
               <Route path="/tasks" element={<Tasks />} />
               <Route path="/pomodoro" element={<Pomodoro />} />
               <Route path="/habits" element={<Habits />} />
+              <Route path="/workouts" element={<Workouts />} />
               <Route path="/finances" element={<Finances />} />
+              <Route path="/lists" element={<Lists />} />
               <Route path="/notes" element={<Notes />} />
               <Route path="/analysis" element={<Analysis />} />
               <Route path="/assistant" element={<Assistant />} />

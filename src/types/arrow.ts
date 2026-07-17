@@ -313,3 +313,123 @@ export type ViewMode = 'cards' | 'timeline' | 'kanban' | 'matrix' | 'calendar';
 export type FinancePeriod = 'semanal' | 'mensal' | 'anual';
 
 export type AnalysisPeriod = 'atual' | 'mes' | 'trimestre' | 'ano';
+
+// === Workouts ===
+
+export type WorkoutSplitType = 'AB' | 'ABC' | 'ABCD' | 'ABCDE' | 'custom';
+export type WorkoutSessionStatus = 'a_fazer' | 'feito' | 'pulado';
+export type WorkoutFocus = 'forca' | 'resistencia' | 'hipertrofia';
+
+export interface WorkoutScheduleEntry {
+  day: number;
+  template_id: string;
+}
+
+export interface WorkoutExercise {
+  id: string;
+  name: string;
+  muscle_group?: string;
+  default_sets?: number;
+  default_reps?: number;
+  default_load_kg?: number;
+  rest_seconds?: number;
+  notes?: string;
+}
+
+export interface ExerciseSet {
+  reps: number;
+  load_kg?: number;
+  completed?: boolean;
+}
+
+export interface ExerciseLog {
+  exercise_id?: string;
+  name: string;
+  sets: ExerciseSet[];
+}
+
+export interface WorkoutProgram {
+  id: string;
+  user_id: string;
+  name: string;
+  split_type: WorkoutSplitType;
+  schedule: WorkoutScheduleEntry[];
+  frequency_per_week?: number;
+  focus?: WorkoutFocus;
+  habit_id?: string;
+  cycle_id?: string;
+  is_active: boolean;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkoutTemplate {
+  id: string;
+  user_id: string;
+  program_id: string;
+  label: string;
+  name: string;
+  color?: string;
+  exercises: WorkoutExercise[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkoutSession {
+  id: string;
+  user_id: string;
+  program_id: string;
+  template_id: string;
+  date: string;
+  status: WorkoutSessionStatus;
+  exercises_log: ExerciseLog[];
+  duration_minutes?: number;
+  notes?: string;
+  task_id?: string;
+  cycle_id?: string;
+  week_number?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExerciseProgressPoint {
+  date: string;
+  max_load_kg: number;
+}
+
+// === Media Lists ===
+
+export type MediaListType =
+  | 'filmes' | 'series' | 'animes' | 'animacao'
+  | 'jogos' | 'esportes' | 'livros' | 'custom';
+
+export type MediaItemStatus = 'top' | 'visto' | 'a_ver';
+
+export interface MediaList {
+  id: string;
+  user_id: string;
+  name: string;
+  list_type: MediaListType;
+  is_system: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MediaListItem {
+  id: string;
+  user_id: string;
+  list_id: string;
+  title: string;
+  subtitle?: string;
+  status: MediaItemStatus;
+  rank?: number;
+  rating?: number;
+  notes?: string;
+  tags: string[];
+  cover_path?: string;
+  completed_at?: string;
+  created_at: string;
+  updated_at: string;
+}

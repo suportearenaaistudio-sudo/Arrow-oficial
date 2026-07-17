@@ -182,3 +182,80 @@ CREATE TABLE IF NOT EXISTS ai_token_usage (
   updated_at TEXT NOT NULL,
   PRIMARY KEY (user_id, week_start)
 );
+
+CREATE TABLE IF NOT EXISTS workout_programs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  split_type TEXT NOT NULL DEFAULT 'ABC',
+  schedule TEXT NOT NULL DEFAULT '[]',
+  frequency_per_week INTEGER,
+  focus TEXT,
+  habit_id TEXT,
+  cycle_id TEXT,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  notes TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS workout_templates (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  program_id TEXT NOT NULL,
+  label TEXT NOT NULL,
+  name TEXT NOT NULL,
+  color TEXT,
+  exercises TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (program_id) REFERENCES workout_programs(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS workout_sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  program_id TEXT NOT NULL,
+  template_id TEXT NOT NULL,
+  date TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'a_fazer',
+  exercises_log TEXT NOT NULL DEFAULT '[]',
+  duration_minutes INTEGER,
+  notes TEXT,
+  task_id TEXT,
+  cycle_id TEXT,
+  week_number INTEGER,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (program_id) REFERENCES workout_programs(id) ON DELETE CASCADE,
+  FOREIGN KEY (template_id) REFERENCES workout_templates(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS media_lists (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  list_type TEXT NOT NULL,
+  is_system INTEGER NOT NULL DEFAULT 0,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS media_list_items (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  list_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  subtitle TEXT,
+  status TEXT NOT NULL DEFAULT 'a_ver',
+  rank INTEGER,
+  rating REAL,
+  notes TEXT,
+  tags TEXT NOT NULL DEFAULT '[]',
+  cover_path TEXT,
+  completed_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (list_id) REFERENCES media_lists(id) ON DELETE CASCADE
+);

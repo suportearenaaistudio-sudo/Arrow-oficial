@@ -398,8 +398,18 @@ pub fn db_weekly_scores_finalize(state: State<'_, AppData>, payload: Value) -> R
         .get("tasks_completed")
         .and_then(|v| v.as_i64())
         .unwrap_or(0) as i32;
-    let score = if tasks_planned > 0 {
-        ((tasks_completed as f64 / tasks_planned as f64) * 100.0).round()
+    let workouts_planned = payload
+        .get("workouts_planned")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0) as i32;
+    let workouts_completed = payload
+        .get("workouts_completed")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0) as i32;
+    let total_planned = tasks_planned + workouts_planned;
+    let total_completed = tasks_completed + workouts_completed;
+    let score = if total_planned > 0 {
+        ((total_completed as f64 / total_planned as f64) * 100.0).round()
     } else {
         0.0
     };
@@ -409,6 +419,206 @@ pub fn db_weekly_scores_finalize(state: State<'_, AppData>, payload: Value) -> R
         .get_database()?
         .upsert_weekly_score(&user_id, Value::Object(row))?;
     Ok(Value::Object(result))
+}
+
+// ─── Workout commands ───────────────────────────────────────
+
+#[tauri::command]
+pub fn db_workout_programs_list(state: State<'_, AppData>) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    Ok(json!(vault.get_database()?.list_workout_programs(&user_id)?))
+}
+
+#[tauri::command]
+pub fn db_workout_programs_create(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    Ok(json!(vault.get_database()?.create_workout_program(&user_id, data)?))
+}
+
+#[tauri::command]
+pub fn db_workout_programs_update(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let id = data.get("id").and_then(|v| v.as_str()).ok_or_else(|| "id é obrigatório".to_string())?;
+    let mut updates = data.as_object().cloned().unwrap_or_default();
+    updates.remove("id");
+    Ok(json!(vault.get_database()?.update_workout_program(id, Value::Object(updates))?))
+}
+
+#[tauri::command]
+pub fn db_workout_programs_delete(state: State<'_, AppData>, id: String) -> Result<(), String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    vault.get_database()?.delete_workout_program(&id)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn db_workout_templates_list(state: State<'_, AppData>, program_id: String) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    Ok(json!(vault.get_database()?.list_workout_templates(&program_id)?))
+}
+
+#[tauri::command]
+pub fn db_workout_templates_create(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    Ok(json!(vault.get_database()?.create_workout_template(&user_id, data)?))
+}
+
+#[tauri::command]
+pub fn db_workout_templates_update(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let id = data.get("id").and_then(|v| v.as_str()).ok_or_else(|| "id é obrigatório".to_string())?;
+    let mut updates = data.as_object().cloned().unwrap_or_default();
+    updates.remove("id");
+    Ok(json!(vault.get_database()?.update_workout_template(id, Value::Object(updates))?))
+}
+
+#[tauri::command]
+pub fn db_workout_templates_delete(state: State<'_, AppData>, id: String) -> Result<(), String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    vault.get_database()?.delete_workout_template(&id)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn db_workout_sessions_list(state: State<'_, AppData>, filters: Option<Value>) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    Ok(json!(vault.get_database()?.list_workout_sessions(&user_id, filters)?))
+}
+
+#[tauri::command]
+pub fn db_workout_sessions_create(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    Ok(json!(vault.get_database()?.create_workout_session(&user_id, data)?))
+}
+
+#[tauri::command]
+pub fn db_workout_sessions_update(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let id = data.get("id").and_then(|v| v.as_str()).ok_or_else(|| "id é obrigatório".to_string())?;
+    let mut updates = data.as_object().cloned().unwrap_or_default();
+    updates.remove("id");
+    Ok(json!(vault.get_database()?.update_workout_session(id, Value::Object(updates))?))
+}
+
+#[tauri::command]
+pub fn db_workout_sessions_delete(state: State<'_, AppData>, id: String) -> Result<(), String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    vault.get_database()?.delete_workout_session(&id)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn db_workout_sessions_complete(
+    state: State<'_, AppData>,
+    id: String,
+    exercises_log: Value,
+    duration_minutes: Option<i64>,
+) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    Ok(json!(vault.get_database()?.complete_workout_session(&id, exercises_log, duration_minutes)?))
+}
+
+#[tauri::command]
+pub fn db_workout_sessions_generate_week(
+    state: State<'_, AppData>,
+    program_id: String,
+    cycle_id: String,
+    week_number: i64,
+    week_dates: Value,
+) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    Ok(json!(vault.get_database()?.generate_week_sessions(
+        &user_id,
+        &program_id,
+        &cycle_id,
+        week_number,
+        week_dates,
+    )?))
+}
+
+#[tauri::command]
+pub fn db_workout_exercise_progress(state: State<'_, AppData>, exercise_name: String) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    Ok(json!(vault.get_database()?.get_exercise_progress(&user_id, &exercise_name)?))
+}
+
+// ─── Media list commands ────────────────────────────────────
+
+#[tauri::command]
+pub fn db_media_lists_list(state: State<'_, AppData>) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    Ok(json!(vault.get_database()?.list_media_lists(&user_id)?))
+}
+
+#[tauri::command]
+pub fn db_media_lists_create(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    Ok(json!(vault.get_database()?.create_media_list(&user_id, data)?))
+}
+
+#[tauri::command]
+pub fn db_media_lists_update(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let id = data.get("id").and_then(|v| v.as_str()).ok_or_else(|| "id é obrigatório".to_string())?;
+    let mut updates = data.as_object().cloned().unwrap_or_default();
+    updates.remove("id");
+    Ok(json!(vault.get_database()?.update_media_list(id, Value::Object(updates))?))
+}
+
+#[tauri::command]
+pub fn db_media_lists_delete(state: State<'_, AppData>, id: String) -> Result<(), String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    vault.get_database()?.delete_media_list(&id)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn db_media_items_list(state: State<'_, AppData>, list_id: String) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    Ok(json!(vault.get_database()?.list_media_items(&list_id)?))
+}
+
+#[tauri::command]
+pub fn db_media_items_create(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    Ok(json!(vault.get_database()?.create_media_item(&user_id, data)?))
+}
+
+#[tauri::command]
+pub fn db_media_items_update(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let id = data.get("id").and_then(|v| v.as_str()).ok_or_else(|| "id é obrigatório".to_string())?;
+    let mut updates = data.as_object().cloned().unwrap_or_default();
+    updates.remove("id");
+    Ok(json!(vault.get_database()?.update_media_item(id, Value::Object(updates))?))
+}
+
+#[tauri::command]
+pub fn db_media_items_delete(state: State<'_, AppData>, id: String) -> Result<(), String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    vault.get_database()?.delete_media_item(&id)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn db_media_items_move(
+    state: State<'_, AppData>,
+    id: String,
+    status: String,
+    rank: Option<i64>,
+) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    Ok(json!(vault.get_database()?.move_media_item(&id, &status, rank)?))
 }
 
 // ─── Notes commands ─────────────────────────────────────────

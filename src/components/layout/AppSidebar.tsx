@@ -7,6 +7,7 @@ import {
   LayoutDashboard, Calendar, Target, ListChecks,
   Repeat, Wallet, StickyNote, BarChart3,
   Settings, Compass, Flame, Eye, Timer, Sparkles,
+  Dumbbell, Library,
 } from 'lucide-react';
 
 export const SIDEBAR_WIDTH = 240;
@@ -37,11 +38,13 @@ const navSections: { title: string; items: NavItem[] }[] = [
       { path: '/goals', label: 'Metas', icon: Target },
       { path: '/tasks', label: 'Tarefas', icon: ListChecks },
       { path: '/habits', label: 'Habitos', icon: Repeat },
+      { path: '/workouts', label: 'Treinos', icon: Dumbbell },
     ],
   },
   {
     title: 'Dados',
     items: [
+      { path: '/lists', label: 'Listas', icon: Library },
       { path: '/finances', label: 'Financas', icon: Wallet },
       { path: '/notes', label: 'Notas', icon: StickyNote },
       { path: '/analysis', label: 'Analise', icon: BarChart3 },

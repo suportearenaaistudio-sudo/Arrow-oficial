@@ -10,6 +10,7 @@ import { useTasks } from '@/hooks/useTasks';
 import { useGoals } from '@/hooks/useGoals';
 import { useDailyCheckin } from '@/hooks/useDailyCheckin';
 import { useWeeklyScores } from '@/hooks/useWeeklyScores';
+import { useWorkouts } from '@/hooks/useWorkouts';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -52,9 +53,10 @@ export default function Planning() {
   const { theme, isDark } = useTheme();
   const { activeCycle, isLoading } = useCycles();
   const { goals } = useGoals();
-  const { tasks, getTasksByWeek, getWeekScore } = useTasks();
+  const { tasks, getTasksByWeek } = useTasks();
   const { todayCheckin, allCheckins, saveCheckin } = useDailyCheckin();
   const { finalizeWeek, isWeekFinalized, getScoreForWeek } = useWeeklyScores(activeCycle?.id);
+  const { getWeekWorkoutScore } = useWorkouts();
 
   // MIT state — persisted in localStorage
   const mitKey = activeCycle ? `mit-${activeCycle.id}-${new Date().toISOString().split('T')[0]}` : '';
@@ -95,7 +97,11 @@ export default function Planning() {
 
   const currentWeek = getCurrentWeek(activeCycle);
   const weekTasks = getTasksByWeek(activeCycle.id, currentWeek);
-  const weekScore = getWeekScore(activeCycle.id, currentWeek);
+  const workoutStats = getWeekWorkoutScore(activeCycle.id, currentWeek);
+  const tasksDone = weekTasks.filter(t => t.status === 'concluida').length;
+  const totalPlanned = weekTasks.length + workoutStats.planned;
+  const totalDone = tasksDone + workoutStats.completed;
+  const weekScore = totalPlanned > 0 ? Math.round((totalDone / totalPlanned) * 100) : null;
   const savedScore = getScoreForWeek(currentWeek);
   const weekFinalized = isWeekFinalized(currentWeek);
   const showReportBanner = isLastDayOfWeek(activeCycle.start_date, currentWeek) && !weekFinalized;
@@ -135,12 +141,13 @@ export default function Planning() {
 
   function handleFinalizeWeek(e: React.FormEvent) {
     e.preventDefault();
-    const done = weekTasks.filter(t => t.status === 'concluida').length;
     finalizeWeek.mutate({
       cycle_id: activeCycle.id,
       week_number: currentWeek,
       tasks_planned: weekTasks.length,
-      tasks_completed: done,
+      tasks_completed: tasksDone,
+      workouts_planned: workoutStats.planned,
+      workouts_completed: workoutStats.completed,
       what_went_wrong: reportForm.what_went_wrong,
       lessons: reportForm.lessons,
     }, { onSuccess: () => setReportOpen(false) });
@@ -214,7 +221,10 @@ export default function Planning() {
             style={{ background: scoreColor }} />
         </div>
         <div className="flex justify-between text-xs mt-1.5" style={{ color: theme.textMuted }}>
-          <span>{weekTasks.filter(t => t.status === 'concluida').length} de {weekTasks.length} tarefas concluídas</span>
+          <span>
+            {tasksDone}/{weekTasks.length} tarefas
+            {workoutStats.planned > 0 && ` + ${workoutStats.completed}/${workoutStats.planned} treinos`}
+          </span>
           <span style={{ color: weekScore !== null && weekScore >= 85 ? '#22c55e' : theme.textMuted }}>
             {weekScore !== null && weekScore >= 85 ? '✓ Meta de 85% atingida!' : 'Meta: ≥ 85%'}
           </span>
@@ -424,8 +434,8 @@ export default function Planning() {
           {/* Stats */}
           <div className="grid grid-cols-3 gap-3 my-4">
             {[
-              { label: 'Planejadas', value: weekTasks.length },
-              { label: 'Concluídas', value: weekTasks.filter(t => t.status === 'concluida').length },
+              { label: 'Tarefas', value: `${tasksDone}/${weekTasks.length}` },
+              { label: 'Treinos', value: workoutStats.planned > 0 ? `${workoutStats.completed}/${workoutStats.planned}` : '—' },
               { label: 'Score', value: weekScore !== null ? `${weekScore}%` : '—' },
             ].map(s => (
               <div key={s.label} className="text-center p-3 rounded-xl"

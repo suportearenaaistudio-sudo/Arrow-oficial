@@ -99,6 +99,47 @@ export const desktopAPI = {
       list: (cycleId?: string) => invoke('db_weekly_scores_list', { cycleId: cycleId ?? null }),
       finalize: (data: unknown) => invoke('db_weekly_scores_finalize', { payload: data }),
     },
+    workouts: {
+      programs: {
+        list: () => invoke('db_workout_programs_list'),
+        create: (data: unknown) => invoke('db_workout_programs_create', { data }),
+        update: (data: unknown) => invoke('db_workout_programs_update', { data }),
+        delete: (id: string) => invoke('db_workout_programs_delete', { id }),
+      },
+      templates: {
+        list: (programId: string) => invoke('db_workout_templates_list', { programId }),
+        create: (data: unknown) => invoke('db_workout_templates_create', { data }),
+        update: (data: unknown) => invoke('db_workout_templates_update', { data }),
+        delete: (id: string) => invoke('db_workout_templates_delete', { id }),
+      },
+      sessions: {
+        list: (filters?: unknown) => invoke('db_workout_sessions_list', { filters: filters ?? null }),
+        create: (data: unknown) => invoke('db_workout_sessions_create', { data }),
+        update: (data: unknown) => invoke('db_workout_sessions_update', { data }),
+        delete: (id: string) => invoke('db_workout_sessions_delete', { id }),
+        complete: (id: string, exercisesLog: unknown, durationMinutes?: number) =>
+          invoke('db_workout_sessions_complete', { id, exercisesLog, durationMinutes: durationMinutes ?? null }),
+        generateWeek: (programId: string, cycleId: string, weekNumber: number, weekDates: string[]) =>
+          invoke('db_workout_sessions_generate_week', { programId, cycleId, weekNumber, weekDates }),
+      },
+      progress: (exerciseName: string) => invoke('db_workout_exercise_progress', { exerciseName }),
+    },
+    mediaLists: {
+      lists: {
+        list: () => invoke('db_media_lists_list'),
+        create: (data: unknown) => invoke('db_media_lists_create', { data }),
+        update: (data: unknown) => invoke('db_media_lists_update', { data }),
+        delete: (id: string) => invoke('db_media_lists_delete', { id }),
+      },
+      items: {
+        list: (listId: string) => invoke('db_media_items_list', { listId }),
+        create: (data: unknown) => invoke('db_media_items_create', { data }),
+        update: (data: unknown) => invoke('db_media_items_update', { data }),
+        delete: (id: string) => invoke('db_media_items_delete', { id }),
+        move: (id: string, status: string, rank?: number) =>
+          invoke('db_media_items_move', { id, status, rank: rank ?? null }),
+      },
+    },
   },
   notes: {
     list: () => invoke('notes_list'),
