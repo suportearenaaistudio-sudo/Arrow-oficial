@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
 use tauri::{AppHandle, State};
@@ -8,14 +8,16 @@ use tauri::{AppHandle, State};
 use crate::ai::{AiService, PendingToolCall, GEMINI_API_KEY_SETTING, GEMINI_MODEL_SETTING, current_week_start, mask_api_key, test_gemini_connection, resolve_gemini_model, MAX_CONTEXT_CHARS, MAX_CONTEXT_TOKEN_BUDGET};
 use crate::ai_personal::get_personal_context;
 use crate::app_state::{load_app_state, save_app_state};
+use crate::db::ArrowDatabase;
 use crate::notes::NotesStore;
+use crate::paths::db_path;
 use crate::types::{UiProfile, VaultStatus};
 use crate::vault::{LocalProfileUpdate, VaultManager};
 
 pub struct AppData {
     pub vault: Mutex<VaultManager>,
     pub app_state_path: PathBuf,
-    pub ai_pending: Mutex<HashMap<String, PendingToolCall>>,
+    pub ai_pending: Arc<Mutex<HashMap<String, PendingToolCall>>>,
 }
 
 fn profile_to_ui(vault: &VaultManager, profile: &crate::types::LocalProfile) -> UiProfile {
@@ -520,15 +522,23 @@ pub fn ai_save_model(state: State<'_, AppData>, model: String) -> Result<Value, 
 }
 
 #[tauri::command]
-pub fn ai_save_api_key(state: State<'_, AppData>, api_key: String) -> Result<Value, String> {
+pub async fn ai_save_api_key(state: State<'_, AppData>, api_key: String) -> Result<Value, String> {
     let key = api_key.trim().to_string();
     if key.is_empty() {
         return Err("Chave API não pode ser vazia".to_string());
     }
+    let model = {
+        let vault = state.vault.lock().map_err(|e| e.to_string())?;
+        let db = vault.get_database()?;
+        resolve_gemini_model(db)
+    };
+    let key_for_test = key.clone();
+    let model_for_test = model.clone();
+    tauri::async_runtime::spawn_blocking(move || test_gemini_connection(&key_for_test, &model_for_test))
+        .await
+        .map_err(|e| format!("Falha interna ao testar API: {}", e))??;
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     let db = vault.get_database()?;
-    let model = resolve_gemini_model(db);
-    test_gemini_connection(&key, &model)?;
     db.set_setting(GEMINI_API_KEY_SETTING, &key)?;
     let user_id = vault.get_profile_id()?;
     Ok(json!({
@@ -554,22 +564,32 @@ pub fn ai_remove_api_key(state: State<'_, AppData>) -> Result<Value, String> {
 }
 
 #[tauri::command]
-pub fn ai_test_api_key(state: State<'_, AppData>, api_key: Option<String>, model: Option<String>) -> Result<(), String> {
-    let vault = state.vault.lock().map_err(|e| e.to_string())?;
-    let db = vault.get_database()?;
-    let key = if let Some(k) = api_key {
-        k.trim().to_string()
-    } else {
-        db.get_setting(GEMINI_API_KEY_SETTING)?
-            .ok_or_else(|| "Nenhuma chave configurada".to_string())?
+pub async fn ai_test_api_key(state: State<'_, AppData>, api_key: Option<String>, model: Option<String>) -> Result<(), String> {
+    // #region agent log
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("/Users/marcola/Projetos/Arrow/.cursor/debug-af36b1.log") {
+        let line = serde_json::json!({"sessionId":"af36b1","location":"commands.rs:ai_test_api_key","message":"api test started","data":{"hasInlineKey":api_key.is_some(),"hasInlineModel":model.is_some()},"hypothesisId":"D","timestamp":chrono::Utc::now().timestamp_millis()});
+        let _ = std::io::Write::write_all(&mut f, format!("{}\n", line).as_bytes());
+    }
+    // #endregion
+    let (key, model) = {
+        let vault = state.vault.lock().map_err(|e| e.to_string())?;
+        let db = vault.get_database()?;
+        let key = if let Some(k) = api_key {
+            k.trim().to_string()
+        } else {
+            db.get_setting(GEMINI_API_KEY_SETTING)?
+                .ok_or_else(|| "Nenhuma chave configurada".to_string())?
+        };
+        let model = if let Some(m) = model {
+            m.trim().to_string()
+        } else {
+            resolve_gemini_model(db)
+        };
+        (key, model)
     };
-    let model = if let Some(m) = model {
-        m.trim().to_string()
-    } else {
-        resolve_gemini_model(db)
-    };
-    drop(vault);
-    test_gemini_connection(&key, &model)
+    tauri::async_runtime::spawn_blocking(move || test_gemini_connection(&key, &model))
+        .await
+        .map_err(|e| format!("Falha interna ao testar API: {}", e))?
 }
 
 #[tauri::command]
@@ -670,42 +690,118 @@ fn send_result_to_json(result: crate::ai::SendMessageResult) -> Value {
 }
 
 #[tauri::command]
-pub fn ai_send_message(
+pub async fn ai_send_message(
     state: State<'_, AppData>,
     conversation_id: String,
     message: String,
 ) -> Result<Value, String> {
-    let vault = state.vault.lock().map_err(|e| e.to_string())?;
-    let user_id = vault.get_profile_id()?;
-    let profile = vault.get_status().2.ok_or_else(|| "Vault não aberto".to_string())?;
-    let path = vault.get_vault_path()?;
-    let db = vault.get_database()?;
-    let notes = NotesStore::new(&path, &user_id);
-    let result = AiService::send_message(
-        db,
-        &notes,
-        &user_id,
-        &profile,
-        &conversation_id,
-        message.trim(),
-        &state.ai_pending,
-    )?;
+    // #region agent log
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("/Users/marcola/Projetos/Arrow/.cursor/debug-af36b1.log") {
+        let line = serde_json::json!({"sessionId":"af36b1","location":"commands.rs:ai_send_message:entry","message":"command invoked","data":{"conversationId":&conversation_id,"messageLen":message.len(),"runId":"post-fix"},"hypothesisId":"A","timestamp":chrono::Utc::now().timestamp_millis()});
+        let _ = std::io::Write::write_all(&mut f, format!("{}\n", line).as_bytes());
+    }
+    // #endregion
+    let (user_id, profile, path, db_file, conversation_id, message, pending) = {
+        let vault = state.vault.lock().map_err(|e| e.to_string())?;
+        // #region agent log
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("/Users/marcola/Projetos/Arrow/.cursor/debug-af36b1.log") {
+            let line = serde_json::json!({"sessionId":"af36b1","location":"commands.rs:ai_send_message:vault_locked","message":"vault mutex acquired briefly","data":{"runId":"post-fix"},"hypothesisId":"A","timestamp":chrono::Utc::now().timestamp_millis()});
+            let _ = std::io::Write::write_all(&mut f, format!("{}\n", line).as_bytes());
+        }
+        // #endregion
+        let user_id = vault.get_profile_id()?;
+        let profile = vault.get_status().2.ok_or_else(|| "Vault não aberto".to_string())?;
+        let path = vault.get_vault_path()?;
+        let db_file = db_path(&path);
+        (
+            user_id,
+            profile,
+            path,
+            db_file,
+            conversation_id,
+            message.trim().to_string(),
+            state.ai_pending.clone(),
+        )
+    };
+    let db_file_str = db_file
+        .to_str()
+        .ok_or_else(|| "Caminho do banco inválido".to_string())?
+        .to_string();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let db = ArrowDatabase::open(&db_file_str)?;
+        let notes = NotesStore::new(&path, &user_id);
+        AiService::send_message(
+            &db,
+            &notes,
+            &user_id,
+            &profile,
+            &conversation_id,
+            &message,
+            &pending,
+        )
+    })
+    .await
+    .map_err(|e| format!("Falha interna ao enviar mensagem: {}", e))?;
+    // #region agent log
+    match &result {
+        Ok(r) => {
+            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("/Users/marcola/Projetos/Arrow/.cursor/debug-af36b1.log") {
+                let line = serde_json::json!({"sessionId":"af36b1","location":"commands.rs:ai_send_message:ok","message":"send returned ok","data":{"status":&r.status},"hypothesisId":"A","timestamp":chrono::Utc::now().timestamp_millis()});
+                let _ = std::io::Write::write_all(&mut f, format!("{}\n", line).as_bytes());
+            }
+        }
+        Err(e) => {
+            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("/Users/marcola/Projetos/Arrow/.cursor/debug-af36b1.log") {
+                let line = serde_json::json!({"sessionId":"af36b1","location":"commands.rs:ai_send_message:err","message":"send returned err","data":{"error":e},"hypothesisId":"C","timestamp":chrono::Utc::now().timestamp_millis()});
+                let _ = std::io::Write::write_all(&mut f, format!("{}\n", line).as_bytes());
+            }
+        }
+    }
+    // #endregion
+    let result = result?;
     Ok(send_result_to_json(result))
 }
 
 #[tauri::command]
-pub fn ai_confirm_tool(
+pub async fn ai_confirm_tool(
     state: State<'_, AppData>,
     pending_id: String,
     confirmed: bool,
 ) -> Result<Value, String> {
-    let vault = state.vault.lock().map_err(|e| e.to_string())?;
-    let user_id = vault.get_profile_id()?;
-    let profile = vault.get_status().2.ok_or_else(|| "Vault não aberto".to_string())?;
-    let path = vault.get_vault_path()?;
-    let db = vault.get_database()?;
-    let notes = NotesStore::new(&path, &user_id);
-    let result = AiService::confirm_tool(db, &notes, &user_id, &profile, &pending_id, confirmed, &state.ai_pending)?;
+    let (user_id, profile, path, db_file, pending_id, pending) = {
+        let vault = state.vault.lock().map_err(|e| e.to_string())?;
+        let user_id = vault.get_profile_id()?;
+        let profile = vault.get_status().2.ok_or_else(|| "Vault não aberto".to_string())?;
+        let path = vault.get_vault_path()?;
+        let db_file = db_path(&path);
+        (
+            user_id,
+            profile,
+            path,
+            db_file,
+            pending_id,
+            state.ai_pending.clone(),
+        )
+    };
+    let db_file_str = db_file
+        .to_str()
+        .ok_or_else(|| "Caminho do banco inválido".to_string())?
+        .to_string();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let db = ArrowDatabase::open(&db_file_str)?;
+        let notes = NotesStore::new(&path, &user_id);
+        AiService::confirm_tool(
+            &db,
+            &notes,
+            &user_id,
+            &profile,
+            &pending_id,
+            confirmed,
+            &pending,
+        )
+    })
+    .await
+    .map_err(|e| format!("Falha interna ao confirmar ação: {}", e))??;
     Ok(send_result_to_json(result))
 }
 

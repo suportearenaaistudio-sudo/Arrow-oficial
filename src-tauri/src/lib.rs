@@ -10,7 +10,7 @@ mod paths;
 mod types;
 mod vault;
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 
 use tauri::Manager;
@@ -40,7 +40,7 @@ pub fn run() {
             let data = AppData {
                 vault: Mutex::new(VaultManager::default()),
                 app_state_path,
-                ai_pending: Mutex::new(HashMap::new()),
+                ai_pending: Arc::new(Mutex::new(HashMap::new())),
             };
             commands::try_open_last_vault(&data);
             app.manage(data);

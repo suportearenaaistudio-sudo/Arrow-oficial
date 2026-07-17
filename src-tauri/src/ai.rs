@@ -1,9 +1,29 @@
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use chrono::{Datelike, Duration, Utc};
 use serde_json::{json, Map, Value};
 use uuid::Uuid;
+
+fn agent_debug_log(location: &str, message: &str, data: Value, hypothesis_id: &str) {
+    // #region agent log
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/Users/marcola/Projetos/Arrow/.cursor/debug-af36b1.log")
+    {
+        let line = json!({
+            "sessionId": "af36b1",
+            "location": location,
+            "message": message,
+            "data": data,
+            "hypothesisId": hypothesis_id,
+            "timestamp": Utc::now().timestamp_millis(),
+        });
+        let _ = std::io::Write::write_all(&mut f, format!("{}\n", line).as_bytes());
+    }
+    // #endregion
+}
 
 use crate::ai_context::{
     build_system_prompt, estimate_prompt_stats, estimate_tokens, stats_from_usage, ContextStats,
@@ -126,14 +146,36 @@ pub fn call_gemini(
     }
 
     let client = reqwest::blocking::Client::new();
+    agent_debug_log(
+        "ai.rs:call_gemini:start",
+        "http request starting",
+        json!({ "model": model, "withTools": with_tools, "runId": "post-fix" }),
+        "C",
+    );
     let res = client
         .post(&url)
         .json(&body)
         .send()
-        .map_err(|_| "Erro de rede ao chamar Gemini".to_string())?;
+        .map_err(|e| {
+            agent_debug_log(
+                "ai.rs:call_gemini:network_err",
+                "network error",
+                json!({ "error": e.to_string() }),
+                "C",
+            );
+            "Erro de rede ao chamar Gemini".to_string()
+        })?;
 
     let status = res.status();
-    let data: Value = res.json().map_err(|_| "Resposta inválida da API".to_string())?;
+    let data: Value = res.json().map_err(|e| {
+        agent_debug_log(
+            "ai.rs:call_gemini:json_err",
+            "json parse error",
+            json!({ "error": e.to_string(), "status": status.as_u16() }),
+            "C",
+        );
+        "Resposta inválida da API".to_string()
+    })?;
 
     if !status.is_success() {
         let msg = data
@@ -141,6 +183,12 @@ pub fn call_gemini(
             .and_then(|e| e.get("message"))
             .and_then(|m| m.as_str())
             .unwrap_or("Erro na API Gemini");
+        agent_debug_log(
+            "ai.rs:call_gemini:api_err",
+            "api error response",
+            json!({ "status": status.as_u16(), "message": msg }),
+            "C",
+        );
         return Err(msg.to_string());
     }
 
@@ -187,6 +235,18 @@ pub fn call_gemini(
     } else {
         candidate_content.cloned()
     };
+
+    agent_debug_log(
+        "ai.rs:call_gemini:ok",
+        "http response parsed",
+        json!({
+            "tokensIn": tokens_in,
+            "tokensOut": tokens_out,
+            "functionCalls": function_calls.len(),
+            "hasText": !text_parts.is_empty(),
+        }),
+        "C",
+    );
 
     Ok(GeminiResponse {
         text: if text_parts.is_empty() {
@@ -342,7 +402,7 @@ impl AiService {
         profile: &LocalProfile,
         conversation_id: &str,
         message: &str,
-        pending_store: &Mutex<HashMap<String, PendingToolCall>>,
+        pending_store: &Arc<Mutex<HashMap<String, PendingToolCall>>>,
     ) -> Result<SendMessageResult, String> {
         if message.len() > MAX_USER_MESSAGE_CHARS {
             return Err(format!(
@@ -355,6 +415,17 @@ impl AiService {
             .get_setting(GEMINI_API_KEY_SETTING)?
             .ok_or_else(|| "Configure sua chave API Gemini em Configurações".to_string())?;
         let model = resolve_gemini_model(db);
+        agent_debug_log(
+            "ai.rs:send_message:start",
+            "send started",
+            json!({
+                "model": &model,
+                "messageLen": message.len(),
+                "keyLen": api_key.len(),
+                "conversationId": conversation_id,
+            }),
+            "A",
+        );
         let personal_context = get_personal_context(db)?;
         let system_prompt = build_system_prompt(profile, &personal_context);
 
@@ -379,10 +450,22 @@ impl AiService {
         let mut last_round_in = 0i64;
         let mut last_round_out = 0i64;
 
-        for _ in 0..MAX_TOOL_ROUNDS {
+        for round in 0..MAX_TOOL_ROUNDS {
+            agent_debug_log(
+                "ai.rs:send_message:round_start",
+                "gemini round",
+                json!({ "round": round }),
+                "A",
+            );
             let response = match call_gemini(&api_key, &model, &system_prompt, &contents, true) {
                 Ok(r) => r,
                 Err(e) => {
+                    agent_debug_log(
+                        "ai.rs:send_message:gemini_err",
+                        "gemini call failed",
+                        json!({ "round": round, "error": &e }),
+                        "C",
+                    );
                     return Err(e);
                 }
             };
@@ -425,6 +508,12 @@ impl AiService {
                     }
 
                     let result = execute_tool(db, notes, user_id, &name, &args)?;
+                    agent_debug_log(
+                        "ai.rs:send_message:tool_done",
+                        "tool executed",
+                        json!({ "tool": &name, "round": round }),
+                        "B",
+                    );
                     for q in tools_affecting_queries(&name) {
                         if !affected.contains(&q.to_string()) {
                             affected.push(q.to_string());
@@ -494,6 +583,17 @@ impl AiService {
             let _ = try_refresh_personal_context(db, &api_key, &model, message, text);
         }
 
+        agent_debug_log(
+            "ai.rs:send_message:done",
+            "send completed",
+            json!({
+                "status": if pending_id.is_some() { "pending" } else { "completed" },
+                "totalIn": total_in,
+                "totalOut": total_out,
+            }),
+            "A",
+        );
+
         Ok(SendMessageResult {
             status: if pending_id.is_some() {
                 "pending_confirmation".to_string()
@@ -521,7 +621,7 @@ impl AiService {
         profile: &LocalProfile,
         pending_id: &str,
         confirmed: bool,
-        pending_store: &Mutex<HashMap<String, PendingToolCall>>,
+        pending_store: &Arc<Mutex<HashMap<String, PendingToolCall>>>,
     ) -> Result<SendMessageResult, String> {
         let pending = {
             let mut store = pending_store.lock().map_err(|e| e.to_string())?;

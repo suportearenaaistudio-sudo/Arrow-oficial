@@ -104,6 +104,10 @@ function AssistantDesktop() {
     setOptimisticUser(text);
     setSending(true);
 
+    // #region agent log
+    fetch('http://127.0.0.1:7522/ingest/23c8148f-1089-4fe2-9c7f-b9daad8f820c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'af36b1'},body:JSON.stringify({sessionId:'af36b1',location:'Assistant.tsx:handleSend:start',message:'send started',data:{convId,textLen:text.length,model:activeModel},timestamp:Date.now(),hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
+
     await new Promise<void>((resolve) => {
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
     });
@@ -114,7 +118,13 @@ function AssistantDesktop() {
         convId = conv.id;
         setActiveId(conv.id);
       }
+      // #region agent log
+      fetch('http://127.0.0.1:7522/ingest/23c8148f-1089-4fe2-9c7f-b9daad8f820c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'af36b1'},body:JSON.stringify({sessionId:'af36b1',location:'Assistant.tsx:handleSend:invoke',message:'calling sendMessage',data:{convId},timestamp:Date.now(),hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
       const result = (await desktopAPI.ai.sendMessage(convId, text)) as SendMessageResult;
+      // #region agent log
+      fetch('http://127.0.0.1:7522/ingest/23c8148f-1089-4fe2-9c7f-b9daad8f820c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'af36b1'},body:JSON.stringify({sessionId:'af36b1',location:'Assistant.tsx:handleSend:ok',message:'sendMessage returned',data:{status:result.status},timestamp:Date.now(),hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
       await queryClient.invalidateQueries({ queryKey: ['ai-messages', profile?.id, convId] });
       queryClient.invalidateQueries({ queryKey: ['ai-conversations', profile?.id] });
       queryClient.invalidateQueries({ queryKey: ['ai-settings', profile?.id] });
@@ -132,6 +142,9 @@ function AssistantDesktop() {
       handleSendResult(result);
     } catch (e) {
       setOptimisticUser(null);
+      // #region agent log
+      fetch('http://127.0.0.1:7522/ingest/23c8148f-1089-4fe2-9c7f-b9daad8f820c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'af36b1'},body:JSON.stringify({sessionId:'af36b1',location:'Assistant.tsx:handleSend:catch',message:'sendMessage threw',data:{error:typeof e==='string'?e:e instanceof Error?e.message:String(e)},timestamp:Date.now(),hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
       const msg =
         typeof e === 'string'
           ? e

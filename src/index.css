@@ -222,6 +222,31 @@
     background-clip: text;
   }
 
+  /* === Pomodoro === */
+  .pomodoro-glow {
+    filter: drop-shadow(0 0 24px rgba(249, 115, 22, 0.35));
+  }
+  .pomodoro-hero {
+    position: relative;
+    overflow: hidden;
+  }
+  .pomodoro-hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 30%, rgba(249, 115, 22, 0.08) 0%, transparent 60%);
+    pointer-events: none;
+  }
+  .pomodoro-goal-reached {
+    box-shadow: 0 0 32px rgba(249, 115, 22, 0.25);
+  }
+  .pomodoro-goal-reached.pomodoro-hero::before {
+    background: radial-gradient(ellipse at 50% 30%, rgba(249, 115, 22, 0.18) 0%, transparent 65%);
+  }
+  .focus-dashboard-widget {
+    max-width: 100%;
+  }
+
   /* === Buttons === */
   .arrow-btn-primary {
     background: var(--arrow-accent);

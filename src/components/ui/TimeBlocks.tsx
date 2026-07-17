@@ -1,6 +1,6 @@
-import PomodoroPanel from '@/components/pomodoro/PomodoroPanel';
+import FocusDashboardCard from '@/components/time-blocks/FocusDashboardCard';
 
-/** Compact Pomodoro widget on the Dashboard */
+/** Dashboard focus widget: time blocks + pomodoro */
 export default function TimeBlocks() {
-  return <PomodoroPanel variant="compact" />;
+  return <FocusDashboardCard />;
 }
