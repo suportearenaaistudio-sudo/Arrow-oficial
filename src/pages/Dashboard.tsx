@@ -9,6 +9,7 @@ import { useTransactions } from '@/hooks/useTransactions';
 import { useNavigate } from 'react-router-dom';
 import { Progress } from '@/components/ui/progress';
 import TimeBlocks from '@/components/ui/TimeBlocks';
+import WorkoutDashboardCard from '@/components/workouts/WorkoutDashboardCard';
 
 const moodIcons = [
   { mood: 'muito_feliz', Icon: Smile, label: 'Muito Feliz' },
@@ -152,8 +153,8 @@ export default function Dashboard() {
         </motion.div>
       </div>
 
-      {/* Cycle Card + Stats */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+      {/* Cycle + Performance */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="arrow-card p-5">
           <div className="flex items-center justify-between mb-3">
             <div>
@@ -207,6 +208,16 @@ export default function Dashboard() {
           </div>
         </motion.div>
       </div>
+
+      {/* Treinos */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.27 }}
+        className="mb-6"
+      >
+        <WorkoutDashboardCard />
+      </motion.div>
 
       {/* Time Blocks */}
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.28 }}

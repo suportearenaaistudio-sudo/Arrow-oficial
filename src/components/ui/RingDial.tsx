@@ -60,6 +60,7 @@ export default function RingDial({
   const dashOffset = circumference * (1 - progress / 100);
   const center = size / 2;
 
+  // Knob at end of arc (arc starts at 12 o'clock, no SVG rotation needed)
   const knobAngle = (progress / 100) * 2 * Math.PI - Math.PI / 2;
   const knobX = center + r * Math.cos(knobAngle);
   const knobY = center + r * Math.sin(knobAngle);
@@ -119,7 +120,7 @@ export default function RingDial({
           }
         }}
       >
-        <svg className="absolute inset-0 -rotate-90" width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <svg className="absolute inset-0" width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
           <circle
             cx={center}
             cy={center}
@@ -127,6 +128,7 @@ export default function RingDial({
             fill="none"
             stroke="rgba(148,163,184,0.28)"
             strokeWidth={strokeWidth}
+            transform={`rotate(-90 ${center} ${center})`}
           />
           <circle
             cx={center}
@@ -138,6 +140,7 @@ export default function RingDial({
             strokeLinecap="round"
             strokeDasharray={circumference}
             strokeDashoffset={dashOffset}
+            transform={`rotate(-90 ${center} ${center})`}
             className="transition-[stroke-dashoffset] duration-150 ease-out"
           />
           <circle

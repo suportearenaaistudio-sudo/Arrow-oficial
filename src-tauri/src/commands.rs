@@ -543,10 +543,18 @@ pub fn db_workout_sessions_generate_week(
 }
 
 #[tauri::command]
-pub fn db_workout_exercise_progress(state: State<'_, AppData>, exercise_name: String) -> Result<Value, String> {
+pub fn db_workout_exercise_progress(
+    state: State<'_, AppData>,
+    exercise_name: String,
+    exercise_id: Option<String>,
+) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     let user_id = vault.get_profile_id()?;
-    Ok(json!(vault.get_database()?.get_exercise_progress(&user_id, &exercise_name)?))
+    Ok(json!(vault.get_database()?.get_exercise_progress(
+        &user_id,
+        &exercise_name,
+        exercise_id.as_deref(),
+    )?))
 }
 
 // ─── Media list commands ────────────────────────────────────

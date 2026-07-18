@@ -2,11 +2,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { desktopAPI } from '@/lib/desktop-api';
 import { useVault } from '@/contexts/VaultContext';
 import { useNotification } from './useNotification';
-import { trainingUsesSplit } from '@/lib/workout-config';
+import { trainingUsesSplit, buildScheduleFromDays } from '@/lib/workout-config';
 import type {
   WorkoutProgram, WorkoutTemplate, WorkoutSession,
   ExerciseLog, ExerciseProgressPoint, WorkoutSplitType, WorkoutFocus,
-  WorkoutTrainingType,
+  WorkoutTrainingType, WorkoutExercise,
 } from '@/types/arrow';
 
 const SPLIT_LABELS: Record<WorkoutSplitType, string[]> = {
@@ -47,9 +47,17 @@ export function useWorkouts() {
       duration_weeks: number;
       cycle_id?: string;
       create_habit?: boolean;
+      templates?: { label: string; name: string; exercises: WorkoutExercise[] }[];
     }) => {
       const usesSplit = trainingUsesSplit(data.training_type);
       const labels = usesSplit ? SPLIT_LABELS[data.split_type] : ['S'];
+      const templateDrafts = data.templates?.length
+        ? data.templates
+        : labels.map((label) => ({
+            label,
+            name: usesSplit ? `Treino ${label}` : 'Sessão',
+            exercises: [] as WorkoutExercise[],
+          }));
 
       const program = await desktopAPI.db.workouts.programs.create({
         name: data.name,
@@ -64,12 +72,33 @@ export function useWorkouts() {
         is_active: true,
       }) as WorkoutProgram;
 
-      for (const label of labels) {
-        await desktopAPI.db.workouts.templates.create({
+      const createdTemplates: { id: string; label: string }[] = [];
+      for (const draft of templateDrafts) {
+        const tmpl = await desktopAPI.db.workouts.templates.create({
           program_id: program.id,
-          label,
-          name: usesSplit ? `Treino ${label}` : 'Sessão',
-          exercises: [],
+          label: draft.label,
+          name: draft.name,
+          exercises: draft.exercises,
+        }) as WorkoutTemplate;
+        createdTemplates.push({ id: tmpl.id, label: draft.label });
+      }
+
+      const labelToId = Object.fromEntries(createdTemplates.map((t) => [t.label, t.id]));
+      const scheduleDrafts = buildScheduleFromDays(
+        data.days_of_week,
+        createdTemplates.map((t) => t.label),
+      );
+      const schedule = scheduleDrafts.map((s) => ({
+        day: s.day,
+        template_id: labelToId[s.templateLabel],
+        planned_start_time: s.planned_start_time,
+        planned_duration_minutes: 60,
+      }));
+
+      if (schedule.length > 0) {
+        await desktopAPI.db.workouts.programs.update({
+          id: program.id,
+          schedule,
         });
       }
 
@@ -284,13 +313,13 @@ export function useWorkoutTemplates(programId: string | null) {
   };
 }
 
-export function useExerciseProgress(exerciseName: string | null) {
+export function useExerciseProgress(exerciseName: string | null, exerciseId?: string | null) {
   const { profile } = useVault();
 
   return useQuery({
-    queryKey: ['exercise-progress', exerciseName, profile?.id],
+    queryKey: ['exercise-progress', exerciseName, exerciseId, profile?.id],
     queryFn: () =>
-      desktopAPI.db.workouts.progress(exerciseName!) as Promise<ExerciseProgressPoint[]>,
+      desktopAPI.db.workouts.progress(exerciseName!, exerciseId ?? undefined) as Promise<ExerciseProgressPoint[]>,
     enabled: !!profile && !!exerciseName,
     retry: false,
   });

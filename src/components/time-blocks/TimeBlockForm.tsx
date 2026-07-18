@@ -231,7 +231,7 @@ export default function TimeBlockForm({
         type="button"
         onClick={handleSubmit}
         className="w-full py-2 rounded-xl text-xs font-semibold"
-        style={{ background: theme.accent, color: '#fff' }}
+        style={{ background: theme.accent, color: theme.accentForeground }}
       >
         {isEditing ? 'Salvar alterações' : 'Adicionar à timeline'}
       </button>

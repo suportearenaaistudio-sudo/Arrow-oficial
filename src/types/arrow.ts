@@ -405,6 +405,8 @@ export interface WorkoutSession {
 export interface ExerciseProgressPoint {
   date: string;
   max_load_kg: number;
+  max_reps?: number;
+  total_volume?: number;
 }
 
 // === Media Lists ===

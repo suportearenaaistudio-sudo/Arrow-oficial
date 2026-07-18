@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useTheme } from '@/contexts/ThemeContext';
 import { Minus, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -15,6 +16,7 @@ import type { AmbientSound } from '@/types/pomodoro';
 interface PomodoroSettingsProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  defaultTab?: string;
 }
 
 function Stepper({
@@ -69,7 +71,13 @@ const AMBIENT_OPTIONS: { id: AmbientSound; label: string }[] = [
   { id: 'white', label: 'Ruído branco' },
 ];
 
-export default function PomodoroSettings({ open, onOpenChange }: PomodoroSettingsProps) {
+export default function PomodoroSettings({ open, onOpenChange, defaultTab = 'duration' }: PomodoroSettingsProps) {
+  const { theme } = useTheme();
+  const [activeTab, setActiveTab] = useState(defaultTab);
+
+  useEffect(() => {
+    if (open) setActiveTab(defaultTab);
+  }, [open, defaultTab]);
   const {
     durationMin,
     shortBreakMin,
@@ -95,6 +103,8 @@ export default function PomodoroSettings({ open, onOpenChange }: PomodoroSetting
     applyPreset,
     refreshPresets,
     resetCycle,
+    addManualPomodoro,
+    activePresetId,
   } = useFocusTimer();
 
   const [durationFocus, setDurationFocus] = useState(durationMin);
@@ -107,7 +117,7 @@ export default function PomodoroSettings({ open, onOpenChange }: PomodoroSetting
           <DialogTitle>Configurações do Pomodoro</DialogTitle>
         </DialogHeader>
 
-        <Tabs defaultValue="duration" className="w-full">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="w-full grid grid-cols-4 h-9">
             <TabsTrigger value="duration" className="text-[10px]">Duração</TabsTrigger>
             <TabsTrigger value="notifications" className="text-[10px]">Alertas</TabsTrigger>
@@ -169,8 +179,8 @@ export default function PomodoroSettings({ open, onOpenChange }: PomodoroSetting
                       }}
                       className="px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors hover:opacity-80"
                       style={{
-                        background: 'var(--arrow-accent-light)',
-                        color: 'var(--arrow-accent)',
+                        background: activePresetId === p.id ? 'var(--arrow-accent)' : 'var(--arrow-accent-light)',
+                        color: activePresetId === p.id ? theme.accentForeground : 'var(--arrow-accent)',
                         border: '1px solid var(--arrow-border)',
                       }}
                     >
@@ -219,7 +229,7 @@ export default function PomodoroSettings({ open, onOpenChange }: PomodoroSetting
                     toast.success(`Preset "${name}" criado`);
                   }}
                   className="px-2.5 py-1.5 rounded-lg text-[10px] font-semibold"
-                  style={{ background: 'var(--arrow-accent)', color: '#fff' }}
+                  style={{ background: 'var(--arrow-accent)', color: theme.accentForeground }}
                 >
                   Salvar
                 </button>
@@ -238,10 +248,6 @@ export default function PomodoroSettings({ open, onOpenChange }: PomodoroSetting
               checked={autoStartBreak}
               onChange={setAutoStartBreak}
             />
-            <div className="rounded-xl p-3" style={{ background: 'var(--arrow-bg-elevated)' }}>
-              <p className="text-[10px] mb-2" style={{ color: 'var(--arrow-text-muted)' }}>Meta diária</p>
-              <Stepper value={dailyPomodoroGoal} onChange={setDailyPomodoroGoal} min={1} max={20} suffix="pomodoros" />
-            </div>
           </TabsContent>
 
           <TabsContent value="sounds" className="space-y-3 mt-4">
@@ -257,7 +263,7 @@ export default function PomodoroSettings({ open, onOpenChange }: PomodoroSetting
                   className="px-3 py-2 rounded-xl text-xs font-medium transition-colors"
                   style={{
                     background: ambientSound === opt.id ? 'var(--arrow-accent)' : 'var(--arrow-bg-elevated)',
-                    color: ambientSound === opt.id ? '#fff' : 'var(--arrow-text-secondary)',
+                    color: ambientSound === opt.id ? theme.accentForeground : 'var(--arrow-text-secondary)',
                     border: '1px solid var(--arrow-border)',
                   }}
                 >
@@ -279,6 +285,10 @@ export default function PomodoroSettings({ open, onOpenChange }: PomodoroSetting
           </TabsContent>
 
           <TabsContent value="behavior" className="space-y-3 mt-4">
+            <div className="rounded-xl p-3" style={{ background: 'var(--arrow-bg-elevated)' }}>
+              <p className="text-[10px] mb-2" style={{ color: 'var(--arrow-text-muted)' }}>Meta diária de pomodoros</p>
+              <Stepper value={dailyPomodoroGoal} onChange={setDailyPomodoroGoal} min={1} max={20} suffix="pomodoros" />
+            </div>
             <p className="text-xs" style={{ color: 'var(--arrow-text-secondary)' }}>
               Modo do timer
             </p>
@@ -291,7 +301,7 @@ export default function PomodoroSettings({ open, onOpenChange }: PomodoroSetting
                   className="px-3 py-2.5 rounded-xl text-xs font-medium"
                   style={{
                     background: timerMode === mode ? 'var(--arrow-accent)' : 'var(--arrow-bg-elevated)',
-                    color: timerMode === mode ? '#fff' : 'var(--arrow-text-secondary)',
+                    color: timerMode === mode ? theme.accentForeground : 'var(--arrow-text-secondary)',
                     border: '1px solid var(--arrow-border)',
                   }}
                 >
@@ -304,6 +314,20 @@ export default function PomodoroSettings({ open, onOpenChange }: PomodoroSetting
                 ? 'Estrito: máx. 2 pausas por sessão, reset e skip exigem confirmação.'
                 : 'Leve: pause, reset e skip livres.'}
             </p>
+            <button
+              type="button"
+              onClick={() => {
+                addManualPomodoro();
+              }}
+              className="w-full py-2 rounded-xl text-xs font-medium"
+              style={{
+                background: 'var(--arrow-accent-light)',
+                border: '1px solid var(--arrow-border)',
+                color: 'var(--arrow-accent)',
+              }}
+            >
+              +1 pomodoro manual (correção)
+            </button>
             <button
               type="button"
               onClick={() => {

@@ -65,6 +65,7 @@ export interface ResolvedTheme extends NeutralSurfaces {
   name: string;
   isDark: boolean;
   accent: string;
+  accentForeground: string;
   accentLight: string;
   gradientFrom: string;
   gradientTo: string;
@@ -193,6 +194,11 @@ function getNeutralSurfaces(isDark: boolean, glassOpacity: number): NeutralSurfa
   };
 }
 
+/** Text color on solid accent backgrounds (selected pills, primary buttons) */
+export function getAccentForeground(isDark: boolean): string {
+  return isDark ? '#000000' : '#ffffff';
+}
+
 function resolveTheme(
   colorTheme: ColorThemeConfig,
   backgroundEffect: BackgroundEffectId,
@@ -206,6 +212,7 @@ function resolveTheme(
     name: colorTheme.name,
     isDark: colorTheme.isDark,
     accent: colorTheme.accent,
+    accentForeground: getAccentForeground(colorTheme.isDark),
     accentLight: colorTheme.accentLight,
     gradientFrom: colorTheme.gradientFrom,
     gradientTo: colorTheme.gradientTo,
@@ -255,6 +262,7 @@ function applyThemeVars(t: ResolvedTheme) {
   root.style.setProperty('--arrow-border', t.border);
   root.style.setProperty('--arrow-rim-light', t.rimLight);
   root.style.setProperty('--arrow-accent', t.accent);
+  root.style.setProperty('--arrow-accent-foreground', t.accentForeground);
   root.style.setProperty('--arrow-accent-light', t.accentLight);
   root.style.setProperty('--arrow-gradient-from', t.gradientFrom);
   root.style.setProperty('--arrow-gradient-to', t.gradientTo);

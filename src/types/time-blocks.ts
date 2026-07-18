@@ -85,7 +85,7 @@ export type TimelineScale = '6h' | '12h' | '24h';
 /** Janela visível na timeline (horas) — slider contínuo 6–24 */
 export const MIN_VISIBLE_HOURS = 6;
 export const MAX_VISIBLE_HOURS = 24;
-export const DEFAULT_VISIBLE_HOURS = 12;
+export const DEFAULT_VISIBLE_HOURS = 6;
 
 /** @deprecated use MIN/MAX_VISIBLE_HOURS */
 export const SCALE_VISIBLE_MIN: Record<TimelineScale, number> = {

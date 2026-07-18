@@ -18,15 +18,30 @@ import {
   updateBlock as updateBlockLib,
 } from '@/lib/time-blocks';
 
+const SCALE_STORAGE_KEY = 'arrow-timeblocks-scale';
+
+function loadVisibleSpanHours(): number {
+  try {
+    const raw = localStorage.getItem(SCALE_STORAGE_KEY);
+    if (raw) {
+      const n = Number(raw);
+      if (!Number.isNaN(n)) return clampVisibleHours(n);
+    }
+  } catch {
+    /* ignore */
+  }
+  return DEFAULT_VISIBLE_HOURS;
+}
+
 export function useTimeBlocks(date?: string) {
   const day = date ?? todayKey();
   const [blocks, setBlocks] = useState<PlannedTimeBlock[]>(() => loadBlocksForDate(day));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
-  const [visibleSpanHours, setVisibleSpanHoursState] = useState(DEFAULT_VISIBLE_HOURS);
+  const [visibleSpanHours, setVisibleSpanHoursState] = useState(loadVisibleSpanHours);
   const visibleSpanMin = visibleSpanHours * 60;
   const [viewStartMin, setViewStartMin] = useState(() =>
-    defaultViewStart(DEFAULT_VISIBLE_HOURS * 60),
+    defaultViewStart(loadVisibleSpanHours() * 60),
   );
 
   useEffect(() => {
@@ -52,6 +67,7 @@ export function useTimeBlocks(date?: string) {
   const setVisibleSpanHours = useCallback((hours: number) => {
     const h = clampVisibleHours(hours);
     setVisibleSpanHoursState(h);
+    localStorage.setItem(SCALE_STORAGE_KEY, String(h));
     setViewStartMin((prev) => clampViewStart(prev, h * 60));
   }, []);
 

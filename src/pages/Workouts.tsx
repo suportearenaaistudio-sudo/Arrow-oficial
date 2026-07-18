@@ -2,19 +2,21 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Dumbbell, Plus, CheckCircle2, Circle, Calendar, TrendingUp,
-  Trash2, Edit2,
+  Trash2, SkipForward,
 } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useWorkouts, useWorkoutTemplates, useExerciseProgress } from '@/hooks/useWorkouts';
 import { useCycles, getCurrentWeek } from '@/hooks/useCycles';
 import type {
-  WorkoutSplitType, WorkoutSession, WorkoutExercise, ExerciseLog, ExerciseSet, WorkoutFocus,
+  WorkoutSplitType, WorkoutSession, ExerciseLog, ExerciseSet, WorkoutFocus,
   WorkoutTrainingType, WorkoutScheduleEntry,
 } from '@/types/arrow';
 import WorkoutProgramWizard, { DEFAULT_WIZARD, type WorkoutWizardForm } from '@/components/workouts/WorkoutProgramWizard';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import WorkoutTemplateEditor from '@/components/workouts/WorkoutTemplateEditor';
+import WorkoutCompleteDialog from '@/components/workouts/WorkoutCompleteDialog';
+import WorkoutPerformancePanel from '@/components/workouts/WorkoutPerformancePanel';
 import {
-  SPLIT_FREQUENCY, FOCUS_LABELS, clampFrequency, defaultExercisesForFocus,
+  SPLIT_FREQUENCY, clampFrequency, buildTemplateDrafts,
   TRAINING_TYPE_OPTIONS, TRAINING_TYPE_LABELS, trainingUsesSplit, WEEKDAY_LABELS, WEEKDAY_ORDER,
 } from '@/lib/workout-config';
 
@@ -37,7 +39,7 @@ export default function Workouts() {
   const { theme, isDark } = useTheme();
   const { activeCycle } = useCycles();
   const {
-    programs, sessions, activePrograms, isLoading,
+    programs, activePrograms, isLoading,
     createProgram, updateProgram, deleteProgram, updateSession,
     completeSession, generateWeek, getTodaySession, getSessionsByWeek,
   } = useWorkouts();
@@ -53,13 +55,16 @@ export default function Workouts() {
   const [exerciseLogs, setExerciseLogs] = useState<ExerciseLog[]>([]);
   const [duration, setDuration] = useState(60);
   const [editingTemplate, setEditingTemplate] = useState<string | null>(null);
-  const [progressExercise, setProgressExercise] = useState<string | null>(null);
+  const [progressExercise, setProgressExercise] = useState<{ name: string; id?: string } | null>(null);
 
-  const { data: progressData } = useExerciseProgress(progressExercise);
+  const { data: progressData } = useExerciseProgress(
+    progressExercise?.name ?? null,
+    progressExercise?.id,
+  );
   const todaySession = getTodaySession(programId ?? undefined);
   const currentWeek = activeCycle ? getCurrentWeek(activeCycle) : 1;
   const weekSessions = activeCycle && programId
-    ? getSessionsByWeek(activeCycle.id, currentWeek)
+    ? getSessionsByWeek(activeCycle.id, currentWeek, programId)
     : [];
 
   const program = programs.find(p => p.id === programId);
@@ -67,12 +72,14 @@ export default function Workouts() {
 
   function handleTrainingTypeChange(type: WorkoutTrainingType) {
     const opt = TRAINING_TYPE_OPTIONS.find(t => t.id === type)!;
+    const usesSplit = trainingUsesSplit(type);
     setWizardForm(f => ({
       ...f,
       training_type: type,
       focus: opt.defaultFocus,
-      split_type: opt.usesSplit ? f.split_type : 'custom',
-      frequency_per_week: opt.usesSplit ? f.frequency_per_week : Math.min(f.frequency_per_week, f.days_of_week.length || 3),
+      split_type: usesSplit ? f.split_type : 'custom',
+      frequency_per_week: usesSplit ? f.frequency_per_week : Math.min(f.frequency_per_week, f.days_of_week.length || 3),
+      templates: buildTemplateDrafts(f.split_type, opt.defaultFocus, usesSplit),
     }));
   }
 
@@ -97,19 +104,21 @@ export default function Workouts() {
 
   function handleSplitChange(split: WorkoutSplitType) {
     const freq = SPLIT_FREQUENCY[split];
-    setWizardForm(f => ({
-      ...f,
-      split_type: split,
-      frequency_per_week: clampFrequency(split, f.frequency_per_week || freq.default),
-    }));
+    setWizardForm(f => {
+      const usesSplit = trainingUsesSplit(f.training_type);
+      return {
+        ...f,
+        split_type: split,
+        frequency_per_week: clampFrequency(split, f.frequency_per_week || freq.default),
+        templates: buildTemplateDrafts(split, f.focus, usesSplit),
+      };
+    });
   }
 
   function handleCreateProgram(e: React.FormEvent) {
     e.preventDefault();
     if (!wizardForm.name.trim()) return;
-    if (wizardForm.days_of_week.length === 0) {
-      return;
-    }
+    if (wizardForm.days_of_week.length === 0) return;
     createProgram.mutate({
       ...wizardForm,
       cycle_id: activeCycle?.id,
@@ -134,15 +143,20 @@ export default function Workouts() {
       })),
     }));
     setExerciseLogs(logs);
+    setDuration(session.planned_duration_minutes || 60);
     setCompletingSession(session);
     setCompleteOpen(true);
   }
 
   function handleComplete() {
     if (!completingSession) return;
+    const logsWithCompleted = exerciseLogs.map(log => ({
+      ...log,
+      sets: log.sets.map(s => ({ ...s, completed: s.completed ?? true })),
+    }));
     completeSession.mutate({
       session: completingSession,
-      exercisesLog: exerciseLogs,
+      exercisesLog: logsWithCompleted,
       durationMinutes: duration,
     }, {
       onSuccess: () => {
@@ -150,6 +164,10 @@ export default function Workouts() {
         setCompletingSession(null);
       },
     });
+  }
+
+  function handleSkipSession(session: WorkoutSession) {
+    updateSession.mutate({ id: session.id, status: 'pulado' });
   }
 
   function handleGenerateWeek() {
@@ -162,10 +180,46 @@ export default function Workouts() {
     });
   }
 
-  function updateSet(exIdx: number, setIdx: number, field: keyof ExerciseSet, value: number) {
+  function updateSet(exIdx: number, setIdx: number, field: keyof ExerciseSet, value: number | boolean) {
     setExerciseLogs(prev => prev.map((log, i) =>
       i === exIdx
         ? { ...log, sets: log.sets.map((s, j) => j === setIdx ? { ...s, [field]: value } : s) }
+        : log,
+    ));
+  }
+
+  function toggleSetComplete(exIdx: number, setIdx: number) {
+    setExerciseLogs(prev => prev.map((log, i) =>
+      i === exIdx
+        ? {
+            ...log,
+            sets: log.sets.map((s, j) =>
+              j === setIdx ? { ...s, completed: !s.completed } : s,
+            ),
+          }
+        : log,
+    ));
+  }
+
+  function addSet(exIdx: number) {
+    setExerciseLogs(prev => prev.map((log, i) => {
+      if (i !== exIdx) return log;
+      const last = log.sets[log.sets.length - 1];
+      return {
+        ...log,
+        sets: [...log.sets, {
+          reps: last?.reps ?? 10,
+          load_kg: last?.load_kg ?? 0,
+          completed: false,
+        }],
+      };
+    }));
+  }
+
+  function removeSet(exIdx: number, setIdx: number) {
+    setExerciseLogs(prev => prev.map((log, i) =>
+      i === exIdx
+        ? { ...log, sets: log.sets.filter((_, j) => j !== setIdx) }
         : log,
     ));
   }
@@ -187,7 +241,6 @@ export default function Workouts() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-5">
-        {/* Sidebar programas */}
         <div className="space-y-3">
           <div className="arrow-card p-4">
             <h3 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: theme.textMuted }}>
@@ -250,7 +303,6 @@ export default function Workouts() {
           )}
         </div>
 
-        {/* Main content */}
         <div className="space-y-5">
           {!program ? (
             <div className="arrow-card p-12 text-center">
@@ -259,7 +311,8 @@ export default function Workouts() {
             </div>
           ) : (
             <>
-              {/* Agenda semanal + atribuição de dias */}
+              <WorkoutPerformancePanel programId={programId} />
+
               <div className="arrow-card p-5">
                 <h3 className="font-semibold mb-1" style={{ color: theme.textPrimary }}>Agenda Semanal</h3>
                 <p className="text-xs mb-4" style={{ color: theme.textMuted }}>
@@ -278,7 +331,6 @@ export default function Workouts() {
                         </span>
                         <div className="w-full space-y-1">
                           {scheduled.map((entry, idx) => {
-                            const tmpl = templates.find(t => t.id === entry.template_id);
                             const session = daySessions.find(s => s.template_id === entry.template_id);
                             const isDone = session?.status === 'feito';
                             return (
@@ -325,11 +377,9 @@ export default function Workouts() {
                                 >
                                   ×
                                 </button>
-                                {tmpl && (
-                                  <p className="text-[8px] text-center truncate mt-0.5" style={{ color: theme.textMuted }}>
-                                    {entry.planned_start_time || '—'}
-                                  </p>
-                                )}
+                                <p className="text-[8px] text-center truncate mt-0.5" style={{ color: theme.textMuted }}>
+                                  {entry.planned_start_time || '—'}
+                                </p>
                               </div>
                             );
                           })}
@@ -360,15 +410,26 @@ export default function Workouts() {
                 </div>
               </div>
 
-              {/* Treino de hoje */}
               {todaySession && (
                 <div className="arrow-card p-5" style={{ borderLeft: `4px solid ${theme.accent}` }}>
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="font-semibold" style={{ color: theme.textPrimary }}>Treino de Hoje</h3>
-                    <button onClick={() => openCompleteDialog(todaySession)}
-                      className="arrow-btn-primary text-sm py-1.5 px-4 flex items-center gap-1.5">
-                      <CheckCircle2 className="w-4 h-4" /> Marcar Feito
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleSkipSession(todaySession)}
+                        className="text-xs px-3 py-1.5 rounded-lg flex items-center gap-1"
+                        style={{ border: `1px solid ${theme.border}`, color: theme.textMuted }}
+                      >
+                        <SkipForward className="w-3.5 h-3.5" /> Pular
+                      </button>
+                      <button onClick={() => openCompleteDialog(todaySession)}
+                        className="arrow-btn-primary text-sm py-1.5 px-4 flex items-center gap-1.5"
+                        style={{ color: theme.accentForeground }}
+                      >
+                        <CheckCircle2 className="w-4 h-4" /> Marcar Feito
+                      </button>
+                    </div>
                   </div>
                   {templates.find(t => t.id === todaySession.template_id) && (
                     <p className="text-sm" style={{ color: theme.textSecondary }}>
@@ -378,90 +439,19 @@ export default function Workouts() {
                 </div>
               )}
 
-              {/* Templates / exercícios */}
-              <div className="arrow-card p-5">
-                <h3 className="font-semibold mb-4" style={{ color: theme.textPrimary }}>
-                  Treinos do Programa ({program.split_type})
-                </h3>
-                <div className="space-y-4">
-                  {templates.map(template => (
-                    <div key={template.id} className="rounded-xl p-4"
-                      style={{ background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)' }}>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <span className="w-7 h-7 rounded-lg flex items-center justify-center text-sm font-bold text-white"
-                            style={{ background: theme.accent }}>
-                            {template.label}
-                          </span>
-                          {editingTemplate === template.id ? (
-                            <input
-                              defaultValue={template.name}
-                              onBlur={e => {
-                                updateTemplate.mutate({ id: template.id, name: e.target.value });
-                                setEditingTemplate(null);
-                              }}
-                              className="text-sm font-semibold bg-transparent border-b outline-none"
-                              autoFocus
-                            />
-                          ) : (
-                            <h4 className="font-semibold text-sm" style={{ color: theme.textPrimary }}>
-                              {template.name}
-                            </h4>
-                          )}
-                          <button onClick={() => setEditingTemplate(template.id)}>
-                            <Edit2 className="w-3.5 h-3.5" style={{ color: theme.textMuted }} />
-                          </button>
-                        </div>
-                        <button onClick={() => setProgressExercise(template.exercises[0]?.name || null)}>
-                          <TrendingUp className="w-4 h-4" style={{ color: theme.accent }} />
-                        </button>
-                      </div>
+              <WorkoutTemplateEditor
+                templates={templates}
+                programFocus={program.focus}
+                editingTemplateId={editingTemplate}
+                onEditTemplate={setEditingTemplate}
+                onUpdateTemplate={(id, patch) => updateTemplate.mutate({ id, ...patch })}
+                onProgressExercise={(name, id) => setProgressExercise({ name, id })}
+              />
 
-                      {/* Exercícios */}
-                      <div className="space-y-2">
-                        {(template.exercises || []).map((ex, i) => (
-                          <div key={ex.id || i} className="flex items-center gap-3 text-sm px-2 py-1.5 rounded-lg"
-                            style={{ background: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)' }}>
-                            <Circle className="w-3 h-3 flex-shrink-0" style={{ color: theme.textMuted }} />
-                            <span className="flex-1" style={{ color: theme.textPrimary }}>{ex.name}</span>
-                            <span className="text-xs" style={{ color: theme.textMuted }}>
-                              {ex.default_sets}×{ex.default_reps}
-                              {ex.default_load_kg ? ` @ ${ex.default_load_kg}kg` : ''}
-                            </span>
-                            <button onClick={() => setProgressExercise(ex.name)}>
-                              <TrendingUp className="w-3 h-3" style={{ color: theme.textMuted }} />
-                            </button>
-                          </div>
-                        ))}
-                        <button
-                          onClick={() => {
-                            const defs = defaultExercisesForFocus(program?.focus || 'hipertrofia');
-                            const newEx: WorkoutExercise = {
-                              id: crypto.randomUUID(),
-                              name: 'Novo Exercício',
-                              ...defs,
-                            };
-                            updateTemplate.mutate({
-                              id: template.id,
-                              exercises: [...(template.exercises || []), newEx],
-                            });
-                          }}
-                          className="text-xs flex items-center gap-1 mt-1"
-                          style={{ color: theme.accent }}
-                        >
-                          <Plus className="w-3 h-3" /> Adicionar exercício
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Evolução de carga */}
               {progressExercise && progressData && progressData.length > 0 && (
                 <div className="arrow-card p-5">
                   <h3 className="font-semibold mb-4" style={{ color: theme.textPrimary }}>
-                    Evolução: {progressExercise}
+                    Evolução: {progressExercise.name}
                   </h3>
                   <div className="flex items-end gap-2 h-32">
                     {progressData.map((point, i) => {
@@ -484,7 +474,6 @@ export default function Workouts() {
                 </div>
               )}
 
-              {/* Sessões da semana */}
               {weekSessions.length > 0 && (
                 <div className="arrow-card p-5">
                   <h3 className="font-semibold mb-3" style={{ color: theme.textPrimary }}>Sessões da Semana</h3>
@@ -495,27 +484,41 @@ export default function Workouts() {
                       const timeLabel = session.planned_start_time
                         ? `${session.planned_start_time}${session.planned_duration_minutes ? ` · ${session.planned_duration_minutes}min` : ''}`
                         : null;
+                      const isSkipped = session.status === 'pulado';
                       return (
                         <div key={session.id} className="flex items-center gap-3 px-3 py-2 rounded-xl"
                           style={{ background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)' }}>
                           {session.status === 'feito'
                             ? <CheckCircle2 className="w-4 h-4 text-green-500" />
-                            : <Circle className="w-4 h-4" style={{ color: theme.textMuted }} />}
+                            : isSkipped
+                              ? <SkipForward className="w-4 h-4" style={{ color: theme.textMuted }} />
+                              : <Circle className="w-4 h-4" style={{ color: theme.textMuted }} />}
                           <div className="flex-1 min-w-0">
                             <span className="text-sm block truncate" style={{ color: theme.textPrimary }}>
                               {timeLabel ? `${timeLabel} · ` : ''}{tmpl?.label} — {tmpl?.name}
+                              {isSkipped ? ' (pulado)' : ''}
                             </span>
                             <span className="text-[10px]" style={{ color: theme.textMuted }}>
                               {session.date}
                               {prog ? ` · ${TRAINING_TYPE_LABELS[prog.training_type || 'academia']}` : ''}
                             </span>
                           </div>
-                          {session.status !== 'feito' && (
-                            <button onClick={() => openCompleteDialog(session)}
-                              className="text-xs px-3 py-1 rounded-lg shrink-0"
-                              style={{ background: theme.accentLight, color: theme.accent }}>
-                              Concluir
-                            </button>
+                          {session.status !== 'feito' && session.status !== 'pulado' && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => handleSkipSession(session)}
+                                className="text-xs px-2 py-1 rounded-lg"
+                                style={{ color: theme.textMuted }}
+                              >
+                                Pular
+                              </button>
+                              <button onClick={() => openCompleteDialog(session)}
+                                className="text-xs px-3 py-1 rounded-lg"
+                                style={{ background: theme.accentLight, color: theme.accent }}>
+                                Concluir
+                              </button>
+                            </div>
                           )}
                         </div>
                       );
@@ -545,42 +548,18 @@ export default function Workouts() {
         onToggleDay={toggleWizardDay}
       />
 
-      {/* Dialog completar treino */}
-      <Dialog open={completeOpen} onOpenChange={setCompleteOpen}>
-        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Registrar Treino</DialogTitle></DialogHeader>
-          <div className="space-y-4 mt-2">
-            {exerciseLogs.map((log, exIdx) => (
-              <div key={exIdx} className="rounded-xl p-3" style={{ background: theme.accentLight }}>
-                <h4 className="font-semibold text-sm mb-2" style={{ color: theme.textPrimary }}>{log.name}</h4>
-                <div className="space-y-1">
-                  {log.sets.map((set, setIdx) => (
-                    <div key={setIdx} className="flex items-center gap-2 text-sm">
-                      <span className="w-6 text-xs" style={{ color: theme.textMuted }}>S{setIdx + 1}</span>
-                      <input type="number" value={set.reps}
-                        onChange={e => updateSet(exIdx, setIdx, 'reps', Number(e.target.value))}
-                        className="w-16 px-2 py-1 rounded border text-xs" placeholder="reps" />
-                      <span className="text-xs" style={{ color: theme.textMuted }}>×</span>
-                      <input type="number" value={set.load_kg || 0}
-                        onChange={e => updateSet(exIdx, setIdx, 'load_kg', Number(e.target.value))}
-                        className="w-16 px-2 py-1 rounded border text-xs" placeholder="kg" />
-                      <span className="text-xs" style={{ color: theme.textMuted }}>kg</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-            <div>
-              <label className="arrow-label block mb-1.5">Duração (min)</label>
-              <input type="number" value={duration} onChange={e => setDuration(Number(e.target.value))}
-                className="w-full px-4 py-2 rounded-xl border text-sm" />
-            </div>
-            <button onClick={handleComplete} className="arrow-btn-primary w-full flex items-center justify-center gap-2">
-              <CheckCircle2 className="w-4 h-4" /> Confirmar Treino
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <WorkoutCompleteDialog
+        open={completeOpen}
+        onOpenChange={setCompleteOpen}
+        exerciseLogs={exerciseLogs}
+        duration={duration}
+        onDurationChange={setDuration}
+        onUpdateSet={updateSet}
+        onToggleSetComplete={toggleSetComplete}
+        onAddSet={addSet}
+        onRemoveSet={removeSet}
+        onConfirm={handleComplete}
+      />
     </motion.div>
   );
 }

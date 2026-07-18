@@ -122,7 +122,8 @@ export const desktopAPI = {
         generateWeek: (programId: string, cycleId: string, weekNumber: number, weekDates: string[]) =>
           invoke('db_workout_sessions_generate_week', { programId, cycleId, weekNumber, weekDates }),
       },
-      progress: (exerciseName: string) => invoke('db_workout_exercise_progress', { exerciseName }),
+      progress: (exerciseName: string, exerciseId?: string) =>
+        invoke('db_workout_exercise_progress', { exerciseName, exerciseId: exerciseId ?? null }),
     },
     mediaLists: {
       lists: {

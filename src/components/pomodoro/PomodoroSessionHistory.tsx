@@ -18,8 +18,11 @@ interface PomodoroSessionHistoryProps {
   compact?: boolean;
 }
 
+const HISTORY_LIMIT = 12;
+
 export default function PomodoroSessionHistory({ compact }: PomodoroSessionHistoryProps) {
   const [sessions, setSessions] = useState<PomodoroSessionLog[]>(() => getTodaySessions());
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     const refresh = () => setSessions(getTodaySessions());
@@ -35,7 +38,9 @@ export default function PomodoroSessionHistory({ compact }: PomodoroSessionHisto
     );
   }
 
-  const shown = compact ? sessions.slice(0, 3) : sessions;
+  const limit = compact ? 3 : HISTORY_LIMIT;
+  const shown = expanded ? sessions : sessions.slice(0, limit);
+  const hasMore = !compact && sessions.length > limit;
 
   return (
     <div className="space-y-1.5">
@@ -55,11 +60,27 @@ export default function PomodoroSessionHistory({ compact }: PomodoroSessionHisto
               <p className="text-[10px]" style={{ color: 'var(--arrow-text-muted)' }}>
                 {fmtClock(s.startedAt)} · {s.durationMin} min
                 {!s.completed && ' · cancelada'}
+                {s.manual && ' · manual'}
               </p>
+              {s.note && (
+                <p className="text-[10px] truncate mt-0.5 italic" style={{ color: 'var(--arrow-text-secondary)' }}>
+                  {s.note}
+                </p>
+              )}
             </div>
           </div>
         );
       })}
+      {hasMore && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="w-full py-2 text-[10px] font-medium rounded-lg"
+          style={{ color: 'var(--arrow-accent)' }}
+        >
+          {expanded ? 'Mostrar menos' : `Ver todas (${sessions.length})`}
+        </button>
+      )}
     </div>
   );
 }

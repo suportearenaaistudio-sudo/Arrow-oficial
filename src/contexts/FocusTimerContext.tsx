@@ -13,8 +13,11 @@ import { syncTaskOnPomodoroComplete, syncTaskOnPomodoroStart } from '@/lib/task-
 import { addFillToBlock, resolveBlockForSession, todayKey } from '@/lib/time-blocks';
 import {
   countCompletedFocusToday,
+  countFocusMinutesToday,
+  countBreaksToday,
   createSessionLog,
   logSession,
+  updateSessionNote,
 } from '@/lib/pomodoro-sessions';
 import { getAllPresets } from '@/lib/pomodoro-presets';
 import type { AmbientSound, PomodoroPreset, SessionMode, TimerMode } from '@/types/pomodoro';
@@ -47,6 +50,7 @@ interface PomodoroPrefs {
   ambientVolume: number;
   focusSessionsTodayDate: string;
   focusSessionsToday: number;
+  activePresetId: string | null;
 }
 
 function loadPrefs(): PomodoroPrefs {
@@ -68,6 +72,7 @@ function loadPrefs(): PomodoroPrefs {
     ambientVolume: 0.5,
     focusSessionsTodayDate: todayKey(),
     focusSessionsToday: 0,
+    activePresetId: null,
   };
   try {
     const raw = localStorage.getItem(PREFS_KEY);
@@ -97,6 +102,7 @@ function loadPrefs(): PomodoroPrefs {
       ambientVolume: typeof p.ambientVolume === 'number' ? p.ambientVolume : 0.5,
       focusSessionsTodayDate: today,
       focusSessionsToday,
+      activePresetId: p.activePresetId ?? null,
     };
   } catch {
     return defaults;
@@ -252,6 +258,9 @@ interface FocusTimerContextType extends FocusTimerState {
   autoStartBreak: boolean;
   dailyPomodoroGoal: number;
   focusSessionsToday: number;
+  focusMinutesToday: number;
+  breaksToday: number;
+  activePresetId: string | null;
   timerMode: TimerMode;
   ambientSound: AmbientSound;
   ambientVolume: number;
@@ -280,6 +289,10 @@ interface FocusTimerContextType extends FocusTimerState {
   togglePause: () => void;
   reset: (force?: boolean) => boolean;
   resetCycle: () => void;
+  addManualPomodoro: () => void;
+  pendingFocusNoteId: string | null;
+  submitFocusNote: (note: string) => void;
+  dismissFocusNote: () => void;
 }
 
 const FocusTimerContext = createContext<FocusTimerContextType | undefined>(undefined);
@@ -298,6 +311,10 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
   const [autoStartBreak, setAutoStartBreakState] = useState(() => prefs.autoStartBreak);
   const [dailyPomodoroGoal, setDailyPomodoroGoalState] = useState(() => prefs.dailyPomodoroGoal);
   const [focusSessionsToday, setFocusSessionsToday] = useState(() => prefs.focusSessionsToday);
+  const [focusMinutesToday, setFocusMinutesToday] = useState(() => countFocusMinutesToday());
+  const [breaksToday, setBreaksToday] = useState(() => countBreaksToday());
+  const [activePresetId, setActivePresetIdState] = useState<string | null>(() => prefs.activePresetId);
+  const [pendingFocusNoteId, setPendingFocusNoteId] = useState<string | null>(null);
   const [timerMode, setTimerModeState] = useState<TimerMode>(() => prefs.timerMode);
   const [ambientSound, setAmbientSoundState] = useState<AmbientSound>(() => prefs.ambientSound);
   const [ambientVolume, setAmbientVolumeState] = useState(() => prefs.ambientVolume);
@@ -347,10 +364,51 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
   useEffect(() => { sessionsUntilLongRef.current = sessionsUntilLongBreak; }, [sessionsUntilLongBreak]);
   useEffect(() => { stateRef.current = state; }, [state]);
 
+  const refreshTodayStats = useCallback(() => {
+    setFocusMinutesToday(countFocusMinutesToday());
+    setBreaksToday(countBreaksToday());
+    const today = todayKey();
+    const current = loadPrefs();
+    if (current.focusSessionsTodayDate === today) {
+      setFocusSessionsToday(current.focusSessionsToday);
+    } else {
+      const count = countCompletedFocusToday();
+      setFocusSessionsToday(count);
+    }
+  }, []);
+
+  useEffect(() => {
+    const onUpdate = () => refreshTodayStats();
+    window.addEventListener('arrow-pomodoro-sessions-updated', onUpdate);
+    return () => window.removeEventListener('arrow-pomodoro-sessions-updated', onUpdate);
+  }, [refreshTodayStats]);
+
   const saveIdlePrefs = useCallback((partial: Partial<PomodoroPrefs>) => {
     const current = loadPrefs();
     savePrefs({ ...current, ...partial });
   }, []);
+
+  useEffect(() => {
+    const syncDayCounter = () => {
+      const today = todayKey();
+      const current = loadPrefs();
+      if (current.focusSessionsTodayDate !== today) {
+        const count = countCompletedFocusToday();
+        setFocusSessionsToday(count);
+        saveIdlePrefs({ focusSessionsToday: count, focusSessionsTodayDate: today });
+      }
+    };
+    syncDayCounter();
+    const interval = setInterval(syncDayCounter, 60_000);
+    const now = new Date();
+    const msUntilMidnight =
+      new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime() - now.getTime();
+    const midnightTimer = setTimeout(syncDayCounter, msUntilMidnight + 200);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(midnightTimer);
+    };
+  }, [saveIdlePrefs]);
 
   const persist = useCallback((next: FocusTimerState, endAt: number | null) => {
     endAtRef.current = endAt;
@@ -405,7 +463,7 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
         ? new Date(sessionStartedAtRef.current)
         : new Date();
 
-      logSession(
+      const logged = logSession(
         createSessionLog('focus', prev.durationMin, startedAt, {
           taskId: prev.taskId,
           taskTitle: prev.taskTitle,
@@ -413,6 +471,8 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
           completed: true,
         }),
       );
+      setPendingFocusNoteId(logged.id);
+      refreshTodayStats();
 
       const newFocusCount = incrementFocusToday();
 
@@ -496,7 +556,7 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
         });
       }
     },
-    [incrementFocusToday, invalidateTasks, persist, promoteTaskOnFocus, startTimerInternal],
+    [incrementFocusToday, invalidateTasks, persist, promoteTaskOnFocus, refreshTodayStats, startTimerInternal],
   );
 
   const handleBreakComplete = useCallback(
@@ -513,6 +573,7 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
           completed: true,
         }),
       );
+      refreshTodayStats();
 
       sessionStartedAtRef.current = null;
       const prefsNow = loadPrefs();
@@ -541,7 +602,7 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
         },
       });
     },
-    [persist, startTimerInternal],
+    [persist, refreshTodayStats, startTimerInternal],
   );
 
   const completeSession = useCallback(
@@ -737,9 +798,11 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
       setShortBreakMin(preset.shortBreakMin);
       setLongBreakMin(preset.longBreakMin);
       setSessionsUntilLongBreak(preset.sessionsUntilLongBreak);
+      setActivePresetIdState(preset.id);
+      saveIdlePrefs({ activePresetId: preset.id });
       toast.success(`Preset "${preset.name}" aplicado`);
     },
-    [setDuration, setShortBreakMin, setLongBreakMin, setSessionsUntilLongBreak],
+    [setDuration, setShortBreakMin, setLongBreakMin, setSessionsUntilLongBreak, saveIdlePrefs],
   );
 
   const startSession = useCallback(() => {
@@ -898,7 +961,33 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
     reset(true);
     setFocusSessionsToday(0);
     saveIdlePrefs({ focusSessionsToday: 0, focusSessionsTodayDate: todayKey() });
-  }, [reset, saveIdlePrefs]);
+    refreshTodayStats();
+  }, [reset, saveIdlePrefs, refreshTodayStats]);
+
+  const addManualPomodoro = useCallback(() => {
+    const p = loadPrefs();
+    logSession(
+      createSessionLog('focus', p.durationMin, new Date(), {
+        taskId: p.taskId,
+        taskTitle: p.taskTitle,
+        blockId: p.activeBlockId,
+        completed: true,
+        manual: true,
+      }),
+    );
+    incrementFocusToday();
+    refreshTodayStats();
+    toast.success('+1 pomodoro registrado manualmente');
+  }, [incrementFocusToday, refreshTodayStats]);
+
+  const submitFocusNote = useCallback((note: string) => {
+    if (pendingFocusNoteId) updateSessionNote(pendingFocusNoteId, note);
+    setPendingFocusNoteId(null);
+  }, [pendingFocusNoteId]);
+
+  const dismissFocusNote = useCallback(() => {
+    setPendingFocusNoteId(null);
+  }, []);
 
   const isSessionOpen = state.status !== 'idle';
   const currentSessionNumber =
@@ -919,6 +1008,9 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
         autoStartBreak,
         dailyPomodoroGoal,
         focusSessionsToday,
+        focusMinutesToday,
+        breaksToday,
+        activePresetId,
         timerMode,
         ambientSound,
         ambientVolume,
@@ -947,6 +1039,10 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
         togglePause,
         reset,
         resetCycle,
+        addManualPomodoro,
+        pendingFocusNoteId,
+        submitFocusNote,
+        dismissFocusNote,
       }}
     >
       {children}

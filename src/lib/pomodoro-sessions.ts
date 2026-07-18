@@ -48,6 +48,28 @@ export function countCompletedFocusToday(): number {
   return getTodaySessions().filter((s) => s.mode === 'focus' && s.completed).length;
 }
 
+export function countFocusMinutesToday(): number {
+  return getTodaySessions()
+    .filter((s) => s.mode === 'focus' && s.completed)
+    .reduce((sum, s) => sum + s.durationMin, 0);
+}
+
+export function countBreaksToday(): number {
+  return getTodaySessions().filter(
+    (s) => (s.mode === 'short_break' || s.mode === 'long_break') && s.completed,
+  ).length;
+}
+
+export function updateSessionNote(id: string, note: string) {
+  const all = loadAllSessions();
+  const idx = all.findIndex((s) => s.id === id);
+  if (idx >= 0) {
+    all[idx] = { ...all[idx], note: note.trim() || undefined };
+    saveAllSessions(all);
+    window.dispatchEvent(new CustomEvent('arrow-pomodoro-sessions-updated'));
+  }
+}
+
 export function createSessionLog(
   mode: SessionMode,
   durationMin: number,
@@ -57,6 +79,7 @@ export function createSessionLog(
     taskTitle?: string | null;
     blockId?: string | null;
     completed: boolean;
+    manual?: boolean;
   },
 ): Omit<PomodoroSessionLog, 'id'> {
   return {
@@ -68,5 +91,6 @@ export function createSessionLog(
     taskTitle: opts.taskTitle ?? null,
     blockId: opts.blockId ?? null,
     completed: opts.completed,
+    manual: opts.manual,
   };
 }

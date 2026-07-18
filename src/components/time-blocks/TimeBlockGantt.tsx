@@ -201,7 +201,7 @@ export default function TimeBlockGantt({
   const panByPixels = useCallback(
     (deltaX: number, chartWidth: number) => {
       if (!onViewStartChange || chartWidth <= 0) return;
-      const deltaMin = -(deltaX / chartWidth) * visibleSpanMin;
+      const deltaMin = (deltaX / chartWidth) * visibleSpanMin;
       onViewStartChange(clampViewStart(viewStartMin + deltaMin, visibleSpanMin));
     },
     [onViewStartChange, viewStartMin, visibleSpanMin],
@@ -210,10 +210,11 @@ export default function TimeBlockGantt({
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {
       if (!panEnabled || !chartRef.current) return;
+      const deltaX = e.deltaX;
+      if (Math.abs(deltaX) < 0.5) return;
       e.preventDefault();
       const chartWidth = chartRef.current.clientWidth;
-      const delta = (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY) * 0.4;
-      panByPixels(delta, chartWidth);
+      panByPixels(deltaX * 0.4, chartWidth);
     },
     [panEnabled, panByPixels],
   );
@@ -234,7 +235,7 @@ export default function TimeBlockGantt({
       if (!panRef.current.active || !chartRef.current || !onViewStartChange) return;
       const chartWidth = chartRef.current.clientWidth;
       const deltaX = e.clientX - panRef.current.startX;
-      const deltaMin = -(deltaX / chartWidth) * visibleSpanMin;
+      const deltaMin = (deltaX / chartWidth) * visibleSpanMin;
       onViewStartChange(clampViewStart(panRef.current.startView + deltaMin, visibleSpanMin));
     },
     [onViewStartChange, visibleSpanMin],

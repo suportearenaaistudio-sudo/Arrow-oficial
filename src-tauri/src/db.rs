@@ -1129,6 +1129,7 @@ impl ArrowDatabase {
         &self,
         user_id: &str,
         exercise_name: &str,
+        exercise_id: Option<&str>,
     ) -> Result<Vec<Map<String, Value>>, String> {
         let mut stmt = self
             .conn
@@ -1147,21 +1148,49 @@ impl ArrowDatabase {
             let log: Value = serde_json::from_str(log_str).unwrap_or(json!([]));
             if let Some(arr) = log.as_array() {
                 for entry in arr {
-                    if entry.get("name").and_then(|v| v.as_str()) == Some(exercise_name) {
-                        let max_load = entry
-                            .get("sets")
-                            .and_then(|s| s.as_array())
-                            .map(|sets| {
-                                sets.iter()
-                                    .filter_map(|set| set.get("load_kg").and_then(|v| v.as_f64()))
-                                    .fold(0.0_f64, f64::max)
-                            })
-                            .unwrap_or(0.0);
-                        let mut point = Map::new();
-                        point.insert("date".to_string(), json!(date));
-                        point.insert("max_load_kg".to_string(), json!(max_load));
-                        progress.push(point);
+                    let matches = if let Some(eid) = exercise_id {
+                        match entry.get("exercise_id").and_then(|v| v.as_str()) {
+                            Some(entry_id) => entry_id == eid,
+                            None => entry.get("name").and_then(|v| v.as_str()) == Some(exercise_name),
+                        }
+                    } else {
+                        entry.get("name").and_then(|v| v.as_str()) == Some(exercise_name)
+                    };
+                    if !matches {
+                        continue;
                     }
+                    let sets = entry.get("sets").and_then(|s| s.as_array());
+                    let max_load = sets
+                        .map(|sets| {
+                            sets.iter()
+                                .filter_map(|set| set.get("load_kg").and_then(|v| v.as_f64()))
+                                .fold(0.0_f64, f64::max)
+                        })
+                        .unwrap_or(0.0);
+                    let max_reps = sets
+                        .map(|sets| {
+                            sets.iter()
+                                .filter_map(|set| set.get("reps").and_then(|v| v.as_f64()))
+                                .fold(0.0_f64, f64::max)
+                        })
+                        .unwrap_or(0.0);
+                    let total_volume = sets
+                        .map(|sets| {
+                            sets.iter()
+                                .filter_map(|set| {
+                                    let reps = set.get("reps").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                                    let load = set.get("load_kg").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                                    Some(reps * load)
+                                })
+                                .sum::<f64>()
+                        })
+                        .unwrap_or(0.0);
+                    let mut point = Map::new();
+                    point.insert("date".to_string(), json!(date));
+                    point.insert("max_load_kg".to_string(), json!(max_load));
+                    point.insert("max_reps".to_string(), json!(max_reps));
+                    point.insert("total_volume".to_string(), json!(total_volume));
+                    progress.push(point);
                 }
             }
         }

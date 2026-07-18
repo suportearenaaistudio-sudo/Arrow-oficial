@@ -12,6 +12,8 @@ export interface PomodoroSessionLog {
   taskTitle: string | null;
   blockId: string | null;
   completed: boolean;
+  note?: string;
+  manual?: boolean;
 }
 
 export interface PomodoroPreset {

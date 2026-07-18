@@ -14,6 +14,7 @@ import { useFocusTimer } from '@/contexts/FocusTimerContext';
 import PomodoroRing from '@/components/pomodoro/PomodoroRing';
 import PomodoroSettings from '@/components/pomodoro/PomodoroSettings';
 import PomodoroTaskPicker from '@/components/pomodoro/PomodoroTaskPicker';
+import PomodoroFocusNoteDialog from '@/components/pomodoro/PomodoroFocusNoteDialog';
 import ProgressRing from '@/components/ui/ProgressRing';
 
 function pad(n: number) {
@@ -49,6 +50,8 @@ export default function PomodoroHero({ variant = 'full' }: PomodoroHeroProps) {
     running,
     isSessionOpen,
     focusSessionsToday,
+    focusMinutesToday,
+    breaksToday,
     dailyPomodoroGoal,
     sessionsUntilLongBreak,
     timerMode,
@@ -65,6 +68,7 @@ export default function PomodoroHero({ variant = 'full' }: PomodoroHeroProps) {
   } = useFocusTimer();
 
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState('behavior');
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmSkip, setConfirmSkip] = useState(false);
 
@@ -148,11 +152,24 @@ export default function PomodoroHero({ variant = 'full' }: PomodoroHeroProps) {
               </span>
             )}
           </div>
-          <div className="flex items-center gap-1.5 text-[10px] tabular-nums" style={{ color: 'var(--arrow-text-muted)' }}>
-            <ProgressRing progress={goalPct} size={28} strokeWidth={3} color="var(--arrow-accent)">
-              <span className="text-[7px] font-bold">{focusSessionsToday}</span>
-            </ProgressRing>
-            <span>{focusSessionsToday}/{dailyPomodoroGoal} hoje</span>
+          <div className="flex flex-col items-end gap-1">
+            <button
+              type="button"
+              onClick={() => { setSettingsTab('behavior'); setSettingsOpen(true); }}
+              className="flex items-center gap-1.5 text-[10px] tabular-nums rounded-lg px-2 py-1 transition-opacity hover:opacity-80"
+              style={{ color: 'var(--arrow-text-muted)', background: 'var(--arrow-bg-elevated)' }}
+              title="Configurar meta diária"
+            >
+              <ProgressRing progress={goalPct} size={28} strokeWidth={3} color="var(--arrow-accent)">
+                <span className="text-[7px] font-bold">{focusSessionsToday}</span>
+              </ProgressRing>
+              <span>{focusSessionsToday}/{dailyPomodoroGoal} hoje</span>
+            </button>
+            <div className="flex items-center gap-2 text-[10px] tabular-nums" style={{ color: 'var(--arrow-text-muted)' }}>
+              <span>{focusMinutesToday} min focados</span>
+              <span>·</span>
+              <span>{breaksToday} pausas</span>
+            </div>
           </div>
         </div>
       )}
@@ -298,7 +315,8 @@ export default function PomodoroHero({ variant = 'full' }: PomodoroHeroProps) {
         )}
       </div>
 
-      <PomodoroSettings open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <PomodoroSettings open={settingsOpen} onOpenChange={setSettingsOpen} defaultTab={settingsTab} />
+      <PomodoroFocusNoteDialog />
 
       <AlertDialog open={confirmReset} onOpenChange={setConfirmReset}>
         <AlertDialogContent>

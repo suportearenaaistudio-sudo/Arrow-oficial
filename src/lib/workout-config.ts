@@ -87,3 +87,90 @@ export function trainingUsesSplit(type: WorkoutTrainingType): boolean {
 
 export const WEEKDAY_LABELS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 export const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+
+const SPLIT_LABELS: Record<WorkoutSplitType, string[]> = {
+  AB: ['A', 'B'],
+  ABC: ['A', 'B', 'C'],
+  ABCD: ['A', 'B', 'C', 'D'],
+  ABCDE: ['A', 'B', 'C', 'D', 'E'],
+  custom: ['S'],
+};
+
+/** Exercícios sugeridos por letra do treino */
+export function starterExercisesForTemplate(
+  label: string,
+): { name: string; muscle_group: string }[] {
+  const templates: Record<string, { name: string; muscle_group: string }[]> = {
+    A: [
+      { name: 'Supino reto', muscle_group: 'Peito' },
+      { name: 'Supino inclinado', muscle_group: 'Peito' },
+      { name: 'Crucifixo', muscle_group: 'Peito' },
+      { name: 'Tríceps pulley', muscle_group: 'Tríceps' },
+    ],
+    B: [
+      { name: 'Puxada frontal', muscle_group: 'Costas' },
+      { name: 'Remada curvada', muscle_group: 'Costas' },
+      { name: 'Rosca direta', muscle_group: 'Bíceps' },
+      { name: 'Rosca martelo', muscle_group: 'Bíceps' },
+    ],
+    C: [
+      { name: 'Agachamento', muscle_group: 'Pernas' },
+      { name: 'Leg press', muscle_group: 'Pernas' },
+      { name: 'Cadeira extensora', muscle_group: 'Quadríceps' },
+      { name: 'Panturrilha em pé', muscle_group: 'Panturrilha' },
+    ],
+    D: [
+      { name: 'Desenvolvimento', muscle_group: 'Ombros' },
+      { name: 'Elevação lateral', muscle_group: 'Ombros' },
+      { name: 'Encolhimento', muscle_group: 'Trapézio' },
+    ],
+    E: [
+      { name: 'Levantamento terra', muscle_group: 'Posterior' },
+      { name: 'Mesa flexora', muscle_group: 'Posterior' },
+      { name: 'Abdominal', muscle_group: 'Core' },
+    ],
+    S: [
+      { name: 'Aquecimento', muscle_group: 'Geral' },
+      { name: 'Exercício principal', muscle_group: 'Geral' },
+      { name: 'Finalização', muscle_group: 'Geral' },
+    ],
+  };
+  const list = templates[label] ?? templates.S;
+  return list;
+}
+
+export function buildTemplateDrafts(
+  split: WorkoutSplitType,
+  focus: WorkoutFocus,
+  usesSplit: boolean,
+): { label: string; name: string; exercises: import('@/types/arrow').WorkoutExercise[] }[] {
+  const labels = usesSplit ? SPLIT_LABELS[split] : ['S'];
+  const defs = defaultExercisesForFocus(focus);
+  return labels.map((label) => ({
+    label,
+    name: usesSplit ? `Treino ${label}` : 'Sessão',
+    exercises: starterExercisesForTemplate(label).map((ex) => ({
+      id: crypto.randomUUID(),
+      name: ex.name,
+      muscle_group: ex.muscle_group,
+      default_sets: defs.default_sets,
+      default_reps: defs.default_reps,
+      rest_seconds: defs.rest_seconds,
+      default_load_kg: focus === 'forca' ? 60 : focus === 'hipertrofia' ? 40 : 20,
+    })),
+  }));
+}
+
+/** Gera entradas de schedule (template_id preenchido depois do create) */
+export function buildScheduleFromDays(
+  days: number[],
+  templateLabels: string[],
+  defaultTime = '08:00',
+): { day: number; templateLabel: string; planned_start_time: string }[] {
+  const sorted = [...days].sort((a, b) => a - b);
+  return sorted.map((day, i) => ({
+    day,
+    templateLabel: templateLabels[i % templateLabels.length],
+    planned_start_time: defaultTime,
+  }));
+}
