@@ -5,6 +5,7 @@ mod ai_tools;
 mod app_state;
 mod commands;
 mod db;
+mod note_links;
 mod notes;
 mod paths;
 mod types;
@@ -115,6 +116,12 @@ pub fn run() {
             commands::db_release_schedules_delete,
             commands::db_release_schedules_mark_released,
             commands::notes_list,
+            commands::notes_get,
+            commands::notes_search,
+            commands::notes_resolve_or_create,
+            commands::notes_backlinks,
+            commands::notes_graph,
+            commands::notes_rebuild_index,
             commands::notes_create,
             commands::notes_update,
             commands::notes_delete,

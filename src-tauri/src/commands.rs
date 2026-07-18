@@ -680,27 +680,247 @@ pub fn db_release_schedules_mark_released(state: State<'_, AppData>, id: String)
 
 // ─── Notes commands ─────────────────────────────────────────
 
+fn notes_vault_context(
+    vault: &VaultManager,
+) -> Result<(String, std::path::PathBuf), String> {
+    let profile = vault
+        .get_status()
+        .2
+        .ok_or_else(|| "Nenhum vault aberto".to_string())?;
+    Ok((profile.id, vault.get_vault_path()?))
+}
+
+fn rebuild_note_links_for_note(
+    db: &ArrowDatabase,
+    user_id: &str,
+    source_id: &str,
+    content: &str,
+    all_notes: &[crate::notes::NoteFileMeta],
+) -> Result<(), String> {
+    use crate::note_links::{extract_links, resolve_title, LinkType};
+
+    db.clear_note_links_for_source(user_id, source_id)?;
+    for link in extract_links(content) {
+        let target_id = resolve_title(&link.target_title, all_notes);
+        let link_type = match link.link_type {
+            LinkType::Wikilink => "wikilink",
+            LinkType::Embed => "embed",
+        };
+        db.insert_note_link(
+            user_id,
+            source_id,
+            target_id.as_deref(),
+            &link.target_title,
+            link.alias.as_deref(),
+            link_type,
+        )?;
+    }
+    Ok(())
+}
+
+fn rebuild_all_note_links(
+    db: &ArrowDatabase,
+    store: &NotesStore,
+    user_id: &str,
+) -> Result<(), String> {
+    let all = store.list()?;
+    db.clear_all_note_links(user_id)?;
+    for note in &all {
+        rebuild_note_links_for_note(db, user_id, &note.id, &note.content, &all)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn build_note_graph(
+    db: &ArrowDatabase,
+    store: &NotesStore,
+    user_id: &str,
+    focus_note_id: Option<&str>,
+    tag_filter: Option<&str>,
+) -> Result<Value, String> {
+    let all = store.list()?;
+    let edges = db.list_note_graph_edges(user_id)?;
+
+    let mut link_counts: HashMap<String, i32> = HashMap::new();
+    for edge in &edges {
+        if let Some(s) = edge.get("source").and_then(|v| v.as_str()) {
+            *link_counts.entry(s.to_string()).or_insert(0) += 1;
+        }
+        if let Some(t) = edge.get("target").and_then(|v| v.as_str()) {
+            *link_counts.entry(t.to_string()).or_insert(0) += 1;
+        }
+    }
+
+    let mut node_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    if let Some(focus) = focus_note_id {
+        node_ids.insert(focus.to_string());
+        for edge in &edges {
+            let source = edge.get("source").and_then(|v| v.as_str()).unwrap_or("");
+            let target = edge.get("target").and_then(|v| v.as_str()).unwrap_or("");
+            if source == focus {
+                node_ids.insert(target.to_string());
+            }
+            if target == focus {
+                node_ids.insert(source.to_string());
+            }
+        }
+    }
+
+    let nodes: Vec<Value> = all
+        .iter()
+        .filter(|n| {
+            if let Some(tag) = tag_filter {
+                if tag.is_empty() {
+                    return true;
+                }
+                if !n.tags.iter().any(|t| t.eq_ignore_ascii_case(tag)) {
+                    return false;
+                }
+            }
+            if focus_note_id.is_some() {
+                return node_ids.contains(&n.id);
+            }
+            true
+        })
+        .map(|n| {
+            json!({
+                "id": n.id,
+                "title": n.title,
+                "folder": n.folder,
+                "linkCount": link_counts.get(&n.id).copied().unwrap_or(0),
+            })
+        })
+        .collect();
+
+    let allowed: std::collections::HashSet<String> =
+        nodes.iter().filter_map(|n| n.get("id").and_then(|v| v.as_str()).map(String::from)).collect();
+
+    let filtered_edges: Vec<Value> = edges
+        .into_iter()
+        .filter(|e| {
+            let s = e.get("source").and_then(|v| v.as_str()).unwrap_or("");
+            let t = e.get("target").and_then(|v| v.as_str()).unwrap_or("");
+            allowed.contains(s) && allowed.contains(t)
+        })
+        .map(Value::Object)
+        .collect();
+
+    Ok(json!({ "nodes": nodes, "edges": filtered_edges }))
+}
+
 #[tauri::command]
 pub fn notes_list(state: State<'_, AppData>) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
-    let (user_id, path) = {
-        let profile = vault.get_status().2.ok_or_else(|| "Nenhum vault aberto".to_string())?;
-        (profile.id, vault.get_vault_path()?)
-    };
+    let (user_id, path) = notes_vault_context(&vault)?;
     let store = NotesStore::new(&path, &user_id);
     let notes: Vec<Value> = store.list()?.iter().map(|n| store.to_note(n)).collect();
     Ok(json!(notes))
 }
 
 #[tauri::command]
+pub fn notes_get(state: State<'_, AppData>, id: String) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let (user_id, path) = notes_vault_context(&vault)?;
+    let store = NotesStore::new(&path, &user_id);
+    Ok(store.to_note(&store.get(&id)?))
+}
+
+#[tauri::command]
+pub fn notes_search(state: State<'_, AppData>, query: String, limit: Option<i32>) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let (user_id, path) = notes_vault_context(&vault)?;
+    let store = NotesStore::new(&path, &user_id);
+    let lim = limit.unwrap_or(20).clamp(1, 100) as usize;
+    let notes: Vec<Value> = store
+        .search(&query, lim)?
+        .iter()
+        .map(|n| store.to_note(n))
+        .collect();
+    Ok(json!(notes))
+}
+
+#[tauri::command]
+pub fn notes_resolve_or_create(
+    state: State<'_, AppData>,
+    title: String,
+    folder: Option<String>,
+) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let (user_id, path) = notes_vault_context(&vault)?;
+    let store = NotesStore::new(&path, &user_id);
+    let db = vault.get_database()?;
+    let note = store.create_stub(&title, folder.as_deref())?;
+    let all = store.list()?;
+    rebuild_note_links_for_note(db, &user_id, &note.id, &note.content, &all)?;
+    Ok(store.to_note(&note))
+}
+
+#[tauri::command]
+pub fn notes_backlinks(state: State<'_, AppData>, note_id: String) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    let path = vault.get_vault_path()?;
+    let store = NotesStore::new(&path, &user_id);
+    let db = vault.get_database()?;
+    let backlinks = db.list_note_backlinks(&user_id, &note_id)?;
+    let unresolved = db.list_unresolved_mentions(&user_id, &note_id)?;
+    let all = store.list()?;
+    let enriched: Vec<Value> = backlinks
+        .into_iter()
+        .filter_map(|b| {
+            let source_id = b.get("source_note_id")?.as_str()?;
+            let source = all.iter().find(|n| n.id == source_id)?;
+            Some(json!({
+                "source_note_id": source_id,
+                "source_title": source.title,
+                "link_type": b.get("link_type").cloned().unwrap_or(json!("wikilink")),
+            }))
+        })
+        .collect();
+    Ok(json!({ "backlinks": enriched, "unresolved": unresolved }))
+}
+
+#[tauri::command]
+pub fn notes_graph(
+    state: State<'_, AppData>,
+    focus_note_id: Option<String>,
+    tag: Option<String>,
+) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    let path = vault.get_vault_path()?;
+    let store = NotesStore::new(&path, &user_id);
+    let db = vault.get_database()?;
+    build_note_graph(
+        db,
+        &store,
+        &user_id,
+        focus_note_id.as_deref(),
+        tag.as_deref(),
+    )
+}
+
+#[tauri::command]
+pub fn notes_rebuild_index(state: State<'_, AppData>) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    let path = vault.get_vault_path()?;
+    let store = NotesStore::new(&path, &user_id);
+    let db = vault.get_database()?;
+    rebuild_all_note_links(db, &store, &user_id)?;
+    Ok(json!({ "success": true }))
+}
+
+#[tauri::command]
 pub fn notes_create(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
-    let (user_id, path) = {
-        let profile = vault.get_status().2.ok_or_else(|| "Nenhum vault aberto".to_string())?;
-        (profile.id, vault.get_vault_path()?)
-    };
+    let (user_id, path) = notes_vault_context(&vault)?;
     let store = NotesStore::new(&path, &user_id);
-    Ok(store.to_note(&store.create(data)?))
+    let db = vault.get_database()?;
+    let note = store.create(data)?;
+    let all = store.list()?;
+    rebuild_note_links_for_note(db, &user_id, &note.id, &note.content, &all)?;
+    Ok(store.to_note(&note))
 }
 
 #[tauri::command]
@@ -711,12 +931,13 @@ pub fn notes_update(state: State<'_, AppData>, data: Value) -> Result<Value, Str
         .and_then(|v| v.as_str())
         .ok_or_else(|| "id é obrigatório".to_string())?
         .to_string();
-    let (user_id, path) = {
-        let profile = vault.get_status().2.ok_or_else(|| "Nenhum vault aberto".to_string())?;
-        (profile.id, vault.get_vault_path()?)
-    };
+    let (user_id, path) = notes_vault_context(&vault)?;
     let store = NotesStore::new(&path, &user_id);
-    Ok(store.to_note(&store.update(&id, data)?))
+    let db = vault.get_database()?;
+    let note = store.update(&id, data)?;
+    let all = store.list()?;
+    rebuild_note_links_for_note(db, &user_id, &note.id, &note.content, &all)?;
+    Ok(store.to_note(&note))
 }
 
 #[tauri::command]
@@ -725,7 +946,10 @@ pub fn notes_delete(state: State<'_, AppData>, id: String) -> Result<(), String>
     let user_id = vault.get_profile_id()?;
     let path = vault.get_vault_path()?;
     let store = NotesStore::new(&path, &user_id);
-    store.delete(&id)
+    let db = vault.get_database()?;
+    store.delete(&id)?;
+    db.delete_note_links_for_note(&user_id, &id)?;
+    Ok(())
 }
 
 // ─── AI commands ────────────────────────────────────────────

@@ -305,6 +305,26 @@ impl ArrowDatabase {
                 "duration_weeks INTEGER DEFAULT 12",
             )?;
         }
+        if from < 6 {
+            self.conn
+                .execute_batch(
+                    "CREATE TABLE IF NOT EXISTS note_links (
+                      id TEXT PRIMARY KEY,
+                      user_id TEXT NOT NULL,
+                      source_note_id TEXT NOT NULL,
+                      target_note_id TEXT,
+                      target_title TEXT NOT NULL,
+                      alias TEXT,
+                      link_type TEXT NOT NULL DEFAULT 'wikilink',
+                      created_at TEXT NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_note_links_source
+                      ON note_links(user_id, source_note_id);
+                    CREATE INDEX IF NOT EXISTS idx_note_links_target
+                      ON note_links(user_id, target_note_id);",
+                )
+                .map_err(|e| e.to_string())?;
+        }
         Ok(())
     }
 
@@ -1585,6 +1605,161 @@ impl ArrowDatabase {
         updates.insert("updated_at".to_string(), json!(now_iso()));
         update_row(&self.conn, "release_schedules", id, updates)?;
         get_by_id(&self.conn, "release_schedules", &id)
+    }
+
+    pub fn clear_note_links_for_source(&self, user_id: &str, source_note_id: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "DELETE FROM note_links WHERE user_id = ? AND source_note_id = ?",
+                params![user_id, source_note_id],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn clear_all_note_links(&self, user_id: &str) -> Result<(), String> {
+        self.conn
+            .execute("DELETE FROM note_links WHERE user_id = ?", params![user_id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn insert_note_link(
+        &self,
+        user_id: &str,
+        source_note_id: &str,
+        target_note_id: Option<&str>,
+        target_title: &str,
+        alias: Option<&str>,
+        link_type: &str,
+    ) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT INTO note_links (id, user_id, source_note_id, target_note_id, target_title, alias, link_type, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                params![
+                    Uuid::new_v4().to_string(),
+                    user_id,
+                    source_note_id,
+                    target_note_id,
+                    target_title,
+                    alias,
+                    link_type,
+                    now_iso(),
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn delete_note_links_for_note(&self, user_id: &str, note_id: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "DELETE FROM note_links WHERE user_id = ? AND (source_note_id = ? OR target_note_id = ?)",
+                params![user_id, note_id, note_id],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn list_note_backlinks(
+        &self,
+        user_id: &str,
+        note_id: &str,
+    ) -> Result<Vec<Map<String, Value>>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT source_note_id, target_title, alias, link_type FROM note_links
+                 WHERE user_id = ? AND target_note_id = ?",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![user_id, note_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (source_id, target_title, alias, link_type) = row.map_err(|e| e.to_string())?;
+            let mut m = Map::new();
+            m.insert("source_note_id".to_string(), json!(source_id));
+            m.insert("target_title".to_string(), json!(target_title));
+            m.insert("alias".to_string(), json!(alias));
+            m.insert("link_type".to_string(), json!(link_type));
+            out.push(m);
+        }
+        Ok(out)
+    }
+
+    pub fn list_unresolved_mentions(
+        &self,
+        user_id: &str,
+        note_id: &str,
+    ) -> Result<Vec<Map<String, Value>>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT target_title, alias, link_type FROM note_links
+                 WHERE user_id = ? AND source_note_id = ? AND target_note_id IS NULL",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![user_id, note_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (target_title, alias, link_type) = row.map_err(|e| e.to_string())?;
+            let mut m = Map::new();
+            m.insert("target_title".to_string(), json!(target_title));
+            m.insert("alias".to_string(), json!(alias));
+            m.insert("link_type".to_string(), json!(link_type));
+            out.push(m);
+        }
+        Ok(out)
+    }
+
+    pub fn list_note_graph_edges(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<Map<String, Value>>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT source_note_id, target_note_id, link_type FROM note_links
+                 WHERE user_id = ? AND target_note_id IS NOT NULL",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![user_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (source, target, link_type) = row.map_err(|e| e.to_string())?;
+            let mut m = Map::new();
+            m.insert("source".to_string(), json!(source));
+            m.insert("target".to_string(), json!(target));
+            m.insert("type".to_string(), json!(link_type));
+            out.push(m);
+        }
+        Ok(out)
     }
 }
 

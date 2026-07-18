@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub const VAULT_VERSION: u32 = 2;
-pub const SCHEMA_VERSION: i32 = 5;
+pub const SCHEMA_VERSION: i32 = 6;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LocalProfile {

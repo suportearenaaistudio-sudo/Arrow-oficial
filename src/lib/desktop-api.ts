@@ -153,6 +153,15 @@ export const desktopAPI = {
   },
   notes: {
     list: () => invoke('notes_list'),
+    get: (id: string) => invoke('notes_get', { id }),
+    search: (query: string, limit?: number) =>
+      invoke('notes_search', { query, limit: limit ?? null }),
+    resolveOrCreate: (title: string, folder?: string) =>
+      invoke('notes_resolve_or_create', { title, folder: folder ?? null }),
+    backlinks: (noteId: string) => invoke('notes_backlinks', { noteId }),
+    graph: (focusNoteId?: string, tag?: string) =>
+      invoke('notes_graph', { focusNoteId: focusNoteId ?? null, tag: tag ?? null }),
+    rebuildIndex: () => invoke('notes_rebuild_index'),
     create: (data: unknown) => invoke('notes_create', { data }),
     update: (data: unknown) => invoke('notes_update', { data }),
     delete: (id: string) => invoke('notes_delete', { id }),

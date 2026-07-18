@@ -246,6 +246,41 @@ export interface Note {
   updated_at: string;
 }
 
+export interface NoteBacklink {
+  source_note_id: string;
+  source_title: string;
+  link_type: string;
+}
+
+export interface NoteUnresolvedLink {
+  target_title: string;
+  alias?: string;
+  link_type: string;
+}
+
+export interface NoteGraphNode {
+  id: string;
+  title: string;
+  folder: string;
+  linkCount: number;
+}
+
+export interface NoteGraphEdge {
+  source: string;
+  target: string;
+  type: string;
+}
+
+export interface NoteGraphData {
+  nodes: NoteGraphNode[];
+  edges: NoteGraphEdge[];
+}
+
+export interface NoteBacklinksData {
+  backlinks: NoteBacklink[];
+  unresolved: NoteUnresolvedLink[];
+}
+
 export interface DailyCheckin {
   id: string;
   user_id: string;

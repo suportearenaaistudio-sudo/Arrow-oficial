@@ -1,5 +1,6 @@
 use serde_json::{json, Map, Value};
 
+use crate::commands::build_note_graph;
 use crate::db::ArrowDatabase;
 use crate::notes::NotesStore;
 
@@ -46,6 +47,19 @@ pub fn compact_tool_result(name: &str, result: Value) -> Value {
             MAX_LIST_ITEMS,
         ),
         "list_notes" => compact_notes(&result),
+        "note_backlinks" => {
+            let bl = compact_list(
+                &result.get("backlinks").unwrap_or(&json!([])),
+                &["source_note_id", "source_title", "link_type"],
+                MAX_LIST_ITEMS,
+            );
+            let mut out = bl.as_object().cloned().unwrap_or_default();
+            if let Some(u) = result.get("unresolved") {
+                out.insert("unresolved".to_string(), u.clone());
+            }
+            Value::Object(out)
+        },
+        "note_graph" => compact_graph(&result),
         "get_vision" => compact_object_fields(&result, &["vision_text", "updated_at"]),
         "get_checkin" => compact_object_fields(
             &result,
@@ -72,6 +86,29 @@ fn compact_list(data: &Value, fields: &[&str], limit: usize) -> Value {
         "total": total,
         "shown": compacted.len(),
         "truncated": total > limit,
+    })
+}
+
+fn compact_graph(data: &Value) -> Value {
+    let nodes = data.get("nodes").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let edges = data.get("edges").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let node_total = nodes.len();
+    let edge_total = edges.len();
+    let compact_nodes: Vec<Value> = nodes
+        .into_iter()
+        .take(20)
+        .filter_map(|item| {
+            let o = item.as_object()?;
+            Some(Value::Object(pick_fields(o, &["id", "title", "folder", "linkCount"])))
+        })
+        .collect();
+    let compact_edges: Vec<Value> = edges.into_iter().take(30).collect();
+    json!({
+        "nodes": compact_nodes,
+        "edges": compact_edges,
+        "nodeTotal": node_total,
+        "edgeTotal": edge_total,
+        "truncated": node_total > 20 || edge_total > 30,
     })
 }
 
@@ -136,6 +173,8 @@ pub fn tool_declarations() -> Value {
             { "name": "list_cycles", "description": "Lista ciclos 12 semanas", "parameters": { "type": "object", "properties": {} } },
             { "name": "list_transactions", "description": "Lista transações", "parameters": { "type": "object", "properties": { "startDate": { "type": "string" } } } },
             { "name": "list_notes", "description": "Lista notas", "parameters": { "type": "object", "properties": {} } },
+            { "name": "note_backlinks", "description": "Backlinks e menções de uma nota", "parameters": { "type": "object", "properties": { "note_id": { "type": "string" }, "title": { "type": "string", "description": "Alternativa ao note_id" } } } },
+            { "name": "note_graph", "description": "Grafo de conexões entre notas (wikilinks)", "parameters": { "type": "object", "properties": { "focus_note_id": { "type": "string" }, "tag": { "type": "string" } } } },
             { "name": "get_vision", "description": "Visão 5 anos", "parameters": { "type": "object", "properties": {} } },
             { "name": "get_checkin", "description": "Check-in de uma data", "parameters": { "type": "object", "properties": { "date": { "type": "string" } }, "required": ["date"] } },
             { "name": "create_task", "description": "Cria tarefa", "parameters": { "type": "object", "properties": { "title": { "type": "string" }, "description": { "type": "string" }, "status": { "type": "string" }, "priority": { "type": "string" }, "due_date": { "type": "string" }, "goal_id": { "type": "string" } }, "required": ["title"] } },
@@ -232,6 +271,41 @@ pub fn execute_tool(
         "list_notes" => {
             let notes_list: Vec<Value> = notes.list()?.iter().map(|n| notes.to_note(n)).collect();
             Ok(compact_tool_result(name, json!(notes_list)))
+        }
+        "note_backlinks" => {
+            let note_id = if let Some(id) = map.get("note_id").and_then(|v| v.as_str()) {
+                id.to_string()
+            } else if let Some(title) = map.get("title").and_then(|v| v.as_str()) {
+                let all = notes.list()?;
+                all.iter()
+                    .find(|n| n.title.eq_ignore_ascii_case(title))
+                    .map(|n| n.id.clone())
+                    .ok_or_else(|| format!("Nota não encontrada: {}", title))?
+            } else {
+                return Err("note_id ou title é obrigatório".to_string());
+            };
+            let backlinks = db.list_note_backlinks(user_id, &note_id)?;
+            let unresolved = db.list_unresolved_mentions(user_id, &note_id)?;
+            let all = notes.list()?;
+            let enriched: Vec<Value> = backlinks
+                .into_iter()
+                .filter_map(|b| {
+                    let source_id = b.get("source_note_id")?.as_str()?;
+                    let source = all.iter().find(|n| n.id == source_id)?;
+                    Some(json!({
+                        "source_note_id": source_id,
+                        "source_title": source.title,
+                        "link_type": b.get("link_type").cloned().unwrap_or(json!("wikilink")),
+                    }))
+                })
+                .collect();
+            Ok(compact_tool_result(name, json!({ "backlinks": enriched, "unresolved": unresolved })))
+        }
+        "note_graph" => {
+            let focus = map.get("focus_note_id").and_then(|v| v.as_str());
+            let tag = map.get("tag").and_then(|v| v.as_str());
+            let graph = build_note_graph(db, notes, user_id, focus, tag)?;
+            Ok(compact_tool_result(name, graph))
         }
         "get_vision" => Ok(compact_tool_result(name, json!(db.get_vision(user_id)?))),
         "get_checkin" => {

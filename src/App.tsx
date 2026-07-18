@@ -62,6 +62,8 @@ const App = () => (
               <Route path="/finances" element={<Finances />} />
               <Route path="/lists" element={<Lists />} />
               <Route path="/notes" element={<Notes />} />
+              <Route path="/notes/graph" element={<Notes />} />
+              <Route path="/notes/:noteId" element={<Notes />} />
               <Route path="/analysis" element={<Analysis />} />
               <Route path="/assistant" element={<Assistant />} />
               <Route path="/settings" element={<Settings />} />

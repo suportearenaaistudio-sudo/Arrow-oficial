@@ -303,6 +303,53 @@ impl<'a> NotesStore<'a> {
         fs::remove_file(self.vault_path.join(&existing.file_path)).map_err(|e| e.to_string())
     }
 
+    pub fn get(&self, id: &str) -> Result<NoteFileMeta, String> {
+        self.list()?
+            .into_iter()
+            .find(|n| n.id == id)
+            .ok_or_else(|| "Nota não encontrada".to_string())
+    }
+
+    pub fn search(&self, query: &str, limit: usize) -> Result<Vec<NoteFileMeta>, String> {
+        let q = query.trim().to_lowercase();
+        if q.is_empty() {
+            return Ok(self.list()?.into_iter().take(limit).collect());
+        }
+        let mut matches: Vec<NoteFileMeta> = self
+            .list()?
+            .into_iter()
+            .filter(|n| {
+                n.title.to_lowercase().contains(&q)
+                    || n.content.to_lowercase().contains(&q)
+                    || n.tags.iter().any(|t| t.to_lowercase().contains(&q))
+            })
+            .collect();
+        matches.truncate(limit);
+        Ok(matches)
+    }
+
+    pub fn create_stub(&self, title: &str, folder: Option<&str>) -> Result<NoteFileMeta, String> {
+        let trimmed = title.trim();
+        if trimmed.is_empty() {
+            return Err("Título é obrigatório".to_string());
+        }
+        if let Some(existing) = self
+            .list()?
+            .into_iter()
+            .find(|n| n.title.eq_ignore_ascii_case(trimmed))
+        {
+            return Ok(existing);
+        }
+        let mut input = serde_json::Map::new();
+        input.insert("title".to_string(), json!(trimmed));
+        input.insert("content".to_string(), json!(""));
+        input.insert("tags".to_string(), json!([]));
+        if let Some(f) = folder {
+            input.insert("folder".to_string(), json!(f));
+        }
+        self.create(Value::Object(input))
+    }
+
     pub fn to_note(&self, meta: &NoteFileMeta) -> Value {
         json!({
             "id": meta.id,
