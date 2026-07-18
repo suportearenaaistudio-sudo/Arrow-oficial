@@ -1,12 +1,11 @@
-import type { PlannedTimeBlock, TimelinePeriod } from '@/types/time-blocks';
+import type { PlannedTimeBlock } from '@/types/time-blocks';
 import {
-  DAY_END_MIN,
-  DAY_START_MIN,
-  NIGHT_END_MIN,
-  NIGHT_START_MIN,
+  DEFAULT_VISIBLE_HOURS,
+  MAX_VISIBLE_HOURS,
+  MIN_VISIBLE_HOURS,
+  TIME_BLOCK_META,
+  TIMELINE_ANCHOR_MIN,
   TIMELINE_END_MIN,
-  TIMELINE_PERIOD_MIN,
-  TIMELINE_START_MIN,
 } from '@/types/time-blocks';
 
 const STORAGE_PREFIX = 'arrow-time-blocks';
@@ -20,8 +19,9 @@ export function pad2(n: number): string {
 }
 
 export function minToTimeStr(min: number): string {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
+  const normalized = ((min % (24 * 60)) + 24 * 60) % (24 * 60);
+  const h = Math.floor(normalized / 60);
+  const m = normalized % 60;
   return `${pad2(h)}:${pad2(m)}`;
 }
 
@@ -31,15 +31,50 @@ export function timeStrToMin(value: string): number | null {
   const h = Number(match[1]);
   const m = Number(match[2]);
   if (h > 23 || m > 59) return null;
-  return h * 60 + m;
+  let min = h * 60 + m;
+  if (min < TIMELINE_ANCHOR_MIN) min += 24 * 60;
+  return min;
+}
+
+export function normalizeBlock(raw: PlannedTimeBlock): PlannedTimeBlock {
+  const withTasks = (() => {
+    if (raw.tasks?.length) return raw;
+    if (raw.taskId) {
+      return {
+        ...raw,
+        tasks: [{ id: raw.taskId, title: raw.taskTitle || '' }],
+      };
+    }
+    return { ...raw, tasks: [] };
+  })();
+
+  return {
+    ...withTasks,
+    color: withTasks.color ?? TIME_BLOCK_META[withTasks.type]?.color ?? BLOCK_COLOR_PRESETS[0].color,
+  };
+}
+
+export function blockTaskIds(block: PlannedTimeBlock): string[] {
+  return normalizeBlock(block).tasks.map((t) => t.id);
+}
+
+export function blockTaskLabels(block: PlannedTimeBlock): string {
+  const b = normalizeBlock(block);
+  if (b.tasks.length === 0) return b.label;
+  return b.tasks.map((t) => t.title).filter(Boolean).join(', ') || b.label;
 }
 
 export function nowMin(d = new Date()): number {
-  return d.getHours() * 60 + d.getMinutes();
+  const h = d.getHours();
+  const m = d.getMinutes();
+  let min = h * 60 + m;
+  if (min < TIMELINE_ANCHOR_MIN) min += 24 * 60;
+  return min;
 }
 
 export function blockDurationMin(block: PlannedTimeBlock): number {
-  return Math.max(1, block.endMin - block.startMin);
+  const end = block.endMin <= block.startMin ? block.endMin + 24 * 60 : block.endMin;
+  return Math.max(1, end - block.startMin);
 }
 
 export function blockFillPercent(block: PlannedTimeBlock, liveExtraMin = 0): number {
@@ -48,77 +83,121 @@ export function blockFillPercent(block: PlannedTimeBlock, liveExtraMin = 0): num
   return Math.round((filled / total) * 100);
 }
 
-function minToPeriodOffset(min: number, period: TimelinePeriod): number {
-  if (period === 'day') {
-    return min - DAY_START_MIN;
-  }
-  if (min >= NIGHT_START_MIN) return min - NIGHT_START_MIN;
-  return 24 * 60 - NIGHT_START_MIN + min;
+export function clampViewStart(viewStartMin: number, visibleSpanMin: number): number {
+  const maxStart = TIMELINE_END_MIN - visibleSpanMin;
+  return Math.max(TIMELINE_ANCHOR_MIN, Math.min(viewStartMin, maxStart));
 }
 
-export function blockOverlapsPeriod(block: PlannedTimeBlock, period: TimelinePeriod): boolean {
-  if (period === 'day') {
-    return block.startMin < DAY_END_MIN && block.endMin > DAY_START_MIN;
-  }
-  return block.startMin < NIGHT_END_MIN || block.endMin > NIGHT_START_MIN;
+export function clampVisibleHours(hours: number): number {
+  return Math.min(MAX_VISIBLE_HOURS, Math.max(MIN_VISIBLE_HOURS, hours));
 }
 
-export function clipBlockToPeriod(
+export function defaultViewStart(
+  visibleSpanMin = DEFAULT_VISIBLE_HOURS * 60,
+  atMin = nowMin(),
+): number {
+  let start = atMin - visibleSpanMin / 2;
+  return clampViewStart(start, visibleSpanMin);
+}
+
+/** Cores da barra estilo pill: faixa clara + preenchimento sólido */
+export function blockBarColors(fillColor: string) {
+  return { fill: fillColor, track: hexToTrackBg(fillColor) };
+}
+
+export function resolveBlockColor(block: PlannedTimeBlock): string {
+  return normalizeBlock(block).color;
+}
+
+function hexToTrackBg(hex: string): string {
+  const clean = hex.replace('#', '');
+  if (clean.length !== 6) return 'rgba(148,163,184,0.22)';
+  const r = parseInt(clean.slice(0, 2), 16);
+  const g = parseInt(clean.slice(2, 4), 16);
+  const b = parseInt(clean.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},0.24)`;
+}
+
+/** Marcas de tempo visíveis na janela atual */
+export function visibleTimeMarks(viewStartMin: number, visibleSpanMin: number): number[] {
+  const stepMin =
+    visibleSpanMin <= 8 * 60 ? 60 : visibleSpanMin <= 14 * 60 ? 120 : 180;
+  const marks: number[] = [];
+  let m = Math.ceil(viewStartMin / stepMin) * stepMin;
+  const end = viewStartMin + visibleSpanMin;
+  while (m <= end) {
+    marks.push(m);
+    m += stepMin;
+  }
+  return marks;
+}
+
+export function minuteMarkLeft(
+  min: number,
+  viewStartMin: number,
+  visibleSpanMin: number,
+): number {
+  return ((min - viewStartMin) / visibleSpanMin) * 100;
+}
+
+export function blockLeftPercent(
   block: PlannedTimeBlock,
-  period: TimelinePeriod,
-): { startOffset: number; endOffset: number } | null {
-  if (!blockOverlapsPeriod(block, period)) return null;
-
-  if (period === 'day') {
-    const start = Math.max(block.startMin, DAY_START_MIN);
-    const end = Math.min(block.endMin, DAY_END_MIN);
-    if (end <= start) return null;
-    return { startOffset: start - DAY_START_MIN, endOffset: end - DAY_START_MIN };
-  }
-
-  const eveningStart = Math.max(block.startMin, NIGHT_START_MIN);
-  const eveningEnd = Math.min(block.endMin, 24 * 60);
-  if (eveningEnd > eveningStart) {
-    return {
-      startOffset: minToPeriodOffset(eveningStart, 'night'),
-      endOffset: minToPeriodOffset(eveningEnd, 'night'),
-    };
-  }
-
-  const morningStart = Math.max(block.startMin, 0);
-  const morningEnd = Math.min(block.endMin, NIGHT_END_MIN);
-  if (morningEnd > morningStart) {
-    return {
-      startOffset: minToPeriodOffset(morningStart, 'night'),
-      endOffset: minToPeriodOffset(morningEnd, 'night'),
-    };
-  }
-
-  return null;
+  viewStartMin: number,
+  visibleSpanMin: number,
+): number {
+  const start = Math.max(block.startMin, viewStartMin);
+  return ((start - viewStartMin) / visibleSpanMin) * 100;
 }
 
-export function blockLeftPercent(block: PlannedTimeBlock, period: TimelinePeriod = 'day'): number {
-  const clipped = clipBlockToPeriod(block, period);
-  if (!clipped) return 0;
-  return (clipped.startOffset / TIMELINE_PERIOD_MIN) * 100;
+export function blockWidthPercent(
+  block: PlannedTimeBlock,
+  viewStartMin: number,
+  visibleSpanMin: number,
+): number {
+  const end = block.endMin <= block.startMin ? block.endMin + 24 * 60 : block.endMin;
+  const clipStart = Math.max(block.startMin, viewStartMin);
+  const clipEnd = Math.min(end, viewStartMin + visibleSpanMin);
+  if (clipEnd <= clipStart) return 0;
+  return ((clipEnd - clipStart) / visibleSpanMin) * 100;
 }
 
-export function blockWidthPercent(block: PlannedTimeBlock, period: TimelinePeriod = 'day'): number {
-  const clipped = clipBlockToPeriod(block, period);
-  if (!clipped) return 0;
-  return ((clipped.endOffset - clipped.startOffset) / TIMELINE_PERIOD_MIN) * 100;
-}
-
-export function nowLeftPercent(d = new Date(), period: TimelinePeriod = 'day'): number | null {
+export function nowLeftPercent(
+  viewStartMin: number,
+  visibleSpanMin: number,
+  d = new Date(),
+): number | null {
   const min = nowMin(d);
-  if (period === 'day') {
-    if (min < DAY_START_MIN || min >= DAY_END_MIN) return null;
-    return ((min - DAY_START_MIN) / TIMELINE_PERIOD_MIN) * 100;
+  if (min < viewStartMin || min > viewStartMin + visibleSpanMin) return null;
+  return ((min - viewStartMin) / visibleSpanMin) * 100;
+}
+
+export function hourMarkLeft(
+  hour: number,
+  viewStartMin: number,
+  visibleSpanMin: number,
+): number {
+  let min = hour * 60;
+  if (min < TIMELINE_ANCHOR_MIN) min += 24 * 60;
+  return ((min - viewStartMin) / visibleSpanMin) * 100;
+}
+
+export function assignLanes(blocks: PlannedTimeBlock[]): Map<string, number> {
+  const sorted = [...blocks].sort((a, b) => a.startMin - b.startMin);
+  const lanes = new Map<string, number>();
+  const laneEnds: number[] = [];
+
+  for (const block of sorted) {
+    const end = block.endMin <= block.startMin ? block.endMin + 24 * 60 : block.endMin;
+    let lane = laneEnds.findIndex((le) => le <= block.startMin);
+    if (lane === -1) {
+      lane = laneEnds.length;
+      laneEnds.push(end);
+    } else {
+      laneEnds[lane] = end;
+    }
+    lanes.set(block.id, lane);
   }
-  if (min >= NIGHT_START_MIN || min < NIGHT_END_MIN) {
-    return (minToPeriodOffset(min, 'night') / TIMELINE_PERIOD_MIN) * 100;
-  }
-  return null;
+  return lanes;
 }
 
 export function findBlockAtTime(
@@ -126,9 +205,12 @@ export function findBlockAtTime(
   min: number,
   taskId?: string | null,
 ): PlannedTimeBlock | null {
-  const byTime = blocks.filter((b) => min >= b.startMin && min < b.endMin);
+  const byTime = blocks.filter((b) => {
+    const end = b.endMin <= b.startMin ? b.endMin + 24 * 60 : b.endMin;
+    return min >= b.startMin && min < end;
+  });
   if (taskId) {
-    const match = byTime.find((b) => b.taskId === taskId);
+    const match = byTime.find((b) => blockTaskIds(b).includes(taskId));
     if (match) return match;
   }
   return byTime[0] ?? null;
@@ -139,7 +221,7 @@ export function loadBlocksForDate(date: string): PlannedTimeBlock[] {
     const raw = localStorage.getItem(`${STORAGE_PREFIX}-${date}`);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as PlannedTimeBlock[];
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed) ? parsed.map(normalizeBlock) : [];
   } catch {
     return [];
   }
@@ -150,13 +232,29 @@ export function saveBlocksForDate(date: string, blocks: PlannedTimeBlock[]) {
 }
 
 export function createBlock(
-  partial: Omit<PlannedTimeBlock, 'id' | 'filledMin'> & { filledMin?: number },
+  partial: Omit<PlannedTimeBlock, 'id' | 'filledMin' | 'tasks' | 'color'> & {
+    filledMin?: number;
+    tasks?: PlannedTimeBlock['tasks'];
+    taskId?: string | null;
+    taskTitle?: string | null;
+    color?: string;
+  },
 ): PlannedTimeBlock {
-  return {
-    ...partial,
+  const tasks =
+    partial.tasks ??
+    (partial.taskId
+      ? [{ id: partial.taskId, title: partial.taskTitle || '' }]
+      : []);
+  const { taskId: _t, taskTitle: _tt, ...rest } = partial;
+  const type = partial.type ?? 'focus';
+  return normalizeBlock({
+    ...rest,
+    tasks,
+    type,
+    color: partial.color ?? TIME_BLOCK_META[type].color,
     id: crypto.randomUUID(),
     filledMin: partial.filledMin ?? 0,
-  };
+  });
 }
 
 export function addFillToBlock(date: string, blockId: string, minutes: number): PlannedTimeBlock[] {
@@ -184,30 +282,6 @@ export function resolveBlockForSession(
   return findBlockAtTime(blocks, atMin, taskId);
 }
 
-export function blocksOverlap(
-  a: { startMin: number; endMin: number },
-  b: { startMin: number; endMin: number },
-): boolean {
-  return a.startMin < b.endMin && b.startMin < a.endMin;
-}
-
-export function detectOverlap(
-  blocks: PlannedTimeBlock[],
-  startMin: number,
-  endMin: number,
-  excludeId?: string,
-): PlannedTimeBlock | null {
-  return (
-    blocks.find(
-      (b) => b.id !== excludeId && blocksOverlap(b, { startMin, endMin }),
-    ) ?? null
-  );
-}
-
-export function blockProgressPercent(block: PlannedTimeBlock, liveExtraMin = 0): number {
-  return blockFillPercent(block, liveExtraMin);
-}
-
 export function markBlockComplete(date: string, blockId: string): PlannedTimeBlock[] {
   const blocks = loadBlocksForDate(date);
   const next = blocks.map((b) => {
@@ -224,16 +298,13 @@ export function duplicateBlock(date: string, blockId: string): PlannedTimeBlock 
   if (!source) return null;
 
   const duration = blockDurationMin(source);
-  let startMin = source.endMin;
+  let startMin = source.endMin <= source.startMin ? source.endMin + 24 * 60 : source.endMin;
   let endMin = startMin + duration;
 
   if (endMin > TIMELINE_END_MIN) {
-    startMin = Math.max(TIMELINE_START_MIN, source.startMin - duration);
+    startMin = Math.max(TIMELINE_ANCHOR_MIN, source.startMin - duration);
     endMin = source.startMin;
   }
-
-  const overlap = detectOverlap(blocks, startMin, endMin);
-  if (overlap) return null;
 
   const copy = createBlock({
     ...source,
@@ -242,6 +313,7 @@ export function duplicateBlock(date: string, blockId: string): PlannedTimeBlock 
     endMin,
     label: `${source.label} (cópia)`,
     filledMin: 0,
+    tasks: [...normalizeBlock(source).tasks],
   });
 
   const next = [...blocks, copy].sort((a, b) => a.startMin - b.startMin);
@@ -252,17 +324,17 @@ export function duplicateBlock(date: string, blockId: string): PlannedTimeBlock 
 export function updateBlock(
   date: string,
   blockId: string,
-  patch: Partial<Pick<PlannedTimeBlock, 'startMin' | 'endMin' | 'label' | 'type' | 'taskId' | 'taskTitle' | 'filledMin'>>,
+  patch: Partial<
+    Pick<PlannedTimeBlock, 'startMin' | 'endMin' | 'label' | 'type' | 'tasks' | 'filledMin' | 'color'>
+  >,
 ): PlannedTimeBlock[] | null {
   const blocks = loadBlocksForDate(date);
   const existing = blocks.find((b) => b.id === blockId);
   if (!existing) return null;
 
-  const nextBlock = { ...existing, ...patch };
-  if (nextBlock.endMin <= nextBlock.startMin) return null;
-
-  const overlap = detectOverlap(blocks, nextBlock.startMin, nextBlock.endMin, blockId);
-  if (overlap) return null;
+  const nextBlock = normalizeBlock({ ...existing, ...patch });
+  const end = nextBlock.endMin <= nextBlock.startMin ? nextBlock.endMin + 24 * 60 : nextBlock.endMin;
+  if (end <= nextBlock.startMin) return null;
 
   const next = blocks
     .map((b) => (b.id === blockId ? nextBlock : b))
@@ -276,18 +348,27 @@ export function suggestNextFreeSlot(
   durationMin = 50,
 ): { startMin: number; endMin: number } | null {
   const sorted = [...blocks].sort((a, b) => a.startMin - b.startMin);
-  const now = nowMin();
-  let cursor = Math.max(TIMELINE_START_MIN, now);
+  const cursor0 = Math.max(TIMELINE_ANCHOR_MIN, nowMin());
+  let cursor = cursor0;
 
   for (const block of sorted) {
+    const blockEnd = block.endMin <= block.startMin ? block.endMin + 24 * 60 : block.endMin;
     if (cursor + durationMin <= block.startMin) {
       return { startMin: cursor, endMin: cursor + durationMin };
     }
-    cursor = Math.max(cursor, block.endMin);
+    cursor = Math.max(cursor, blockEnd);
   }
 
   if (cursor + durationMin <= TIMELINE_END_MIN) {
     return { startMin: cursor, endMin: cursor + durationMin };
   }
   return null;
+}
+
+export function detectOverlap(): null {
+  return null;
+}
+
+export function blockOverlapsPeriod(block: PlannedTimeBlock): boolean {
+  return block.startMin < TIMELINE_END_MIN;
 }

@@ -4,8 +4,8 @@ import { Plus, Library } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useMediaLists, useMediaListItems } from '@/hooks/useMediaLists';
 import SegmentPillBar from '@/components/ui/SegmentPillBar';
-import GlassSidebarPanel from '@/components/ui/GlassSidebarPanel';
 import MediaKanbanColumn from '@/components/lists/MediaKanbanColumn';
+import ReleaseSchedulePanel from '@/components/lists/ReleaseSchedulePanel';
 import { LIST_THEMES } from '@/lib/list-themes';
 import type { MediaList, MediaItemStatus } from '@/types/arrow';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -24,25 +24,29 @@ export default function Lists() {
   }, [activeListId, systemLists, customLists]);
 
   const resolvedListId = activeList?.id ?? null;
-  const { byStatus, createItem, moveItem, deleteItem } = useMediaListItems(resolvedListId);
+  const { byStatus, createItem, moveItem, deleteItem, updateItem } = useMediaListItems(resolvedListId);
 
   const listTheme = activeList ? LIST_THEMES[activeList.list_type] : LIST_THEMES.custom;
 
-  const pillItems = systemLists.map(list => ({
-    id: list.id,
-    label: LIST_THEMES[list.list_type]?.label || list.name,
-    icon: LIST_THEMES[list.list_type]?.icon,
-    accent: LIST_THEMES[list.list_type]?.accent,
-  }));
-
-  const sidebarSections = [{
-    title: 'Personalizadas',
-    items: customLists.map(l => ({
-      id: l.id,
-      label: l.name,
-      icon: LIST_THEMES.custom.icon,
+  const pillItems = useMemo(() => [
+    ...systemLists.map(list => ({
+      id: list.id,
+      label: LIST_THEMES[list.list_type]?.label || list.name,
+      icon: LIST_THEMES[list.list_type]?.icon,
+      accent: LIST_THEMES[list.list_type]?.accent,
     })),
-  }];
+    ...customLists.map(list => ({
+      id: list.id,
+      label: list.name,
+      icon: LIST_THEMES.custom.icon,
+      accent: LIST_THEMES.custom.accent,
+    })),
+  ], [systemLists, customLists]);
+
+  const allItems = useMemo(
+    () => [...byStatus.top, ...byStatus.visto, ...byStatus.a_ver],
+    [byStatus],
+  );
 
   function handleAddItem(
     status: MediaItemStatus,
@@ -76,38 +80,38 @@ export default function Lists() {
       </div>
 
       {pillItems.length > 0 && (
-        <div className="mb-5">
+        <div className="mb-5 flex items-center gap-2 flex-wrap">
           <SegmentPillBar
             items={pillItems}
-            activeId={activeList?.is_system ? resolvedListId : null}
+            activeId={resolvedListId}
             onChange={setActiveListId}
           />
+          <button
+            onClick={() => setNewListOpen(true)}
+            className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-medium"
+            style={{ color: theme.textSecondary, border: `1px dashed ${theme.border}` }}
+          >
+            <Plus className="w-3.5 h-3.5" /> Nova Lista
+          </button>
         </div>
       )}
 
       <div className="flex gap-4 min-h-[calc(100vh-14rem)]">
-        <div className="w-[200px] flex-shrink-0 hidden md:block">
-          <GlassSidebarPanel
-            sections={sidebarSections}
-            activeId={activeList && !activeList.is_system ? resolvedListId : null}
-            onChange={setActiveListId}
-            activeStyle="pill"
-            footer={
-              <button
-                onClick={() => setNewListOpen(true)}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-[13px] font-medium transition-colors"
-                style={{ color: theme.textSecondary }}
-              >
-                <Plus className="w-4 h-4" /> Nova Lista
-              </button>
-            }
-          />
+        <div className="w-[220px] flex-shrink-0 hidden md:block">
+          <div
+            className="flex flex-col rounded-[20px] p-3 h-full min-h-[360px]"
+            style={{
+              background: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+              border: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : theme.border}`,
+            }}
+          >
+            <ReleaseSchedulePanel activeList={activeList} items={allItems} />
+          </div>
         </div>
 
         <div className="flex-1 min-w-0">
           {activeList ? (
             <>
-              {/* Header estilizado por nicho */}
               <div
                 className="relative flex items-center gap-4 mb-5 p-5 rounded-2xl overflow-hidden"
                 style={{ background: listTheme.accentLight }}
@@ -138,13 +142,6 @@ export default function Lists() {
                     ))}
                   </div>
                 </div>
-                <button
-                  onClick={() => setNewListOpen(true)}
-                  className="md:hidden relative flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg"
-                  style={{ background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.7)', color: theme.textSecondary }}
-                >
-                  <Plus className="w-3.5 h-3.5" /> Lista
-                </button>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -155,6 +152,7 @@ export default function Lists() {
                   onAdd={(data) => handleAddItem('top', data)}
                   onMove={(id, status, rank) => moveItem.mutate({ id, status, rank })}
                   onDelete={(id) => deleteItem.mutate(id)}
+                  onUpdateRating={(id, rating) => updateItem.mutate({ id, rating })}
                 />
                 <MediaKanbanColumn
                   status="visto"
@@ -163,6 +161,7 @@ export default function Lists() {
                   onAdd={(data) => handleAddItem('visto', data)}
                   onMove={(id, status) => moveItem.mutate({ id, status })}
                   onDelete={(id) => deleteItem.mutate(id)}
+                  onUpdateRating={(id, rating) => updateItem.mutate({ id, rating })}
                 />
                 <MediaKanbanColumn
                   status="a_ver"
@@ -171,6 +170,7 @@ export default function Lists() {
                   onAdd={(data) => handleAddItem('a_ver', data)}
                   onMove={(id, status) => moveItem.mutate({ id, status })}
                   onDelete={(id) => deleteItem.mutate(id)}
+                  onUpdateRating={(id, rating) => updateItem.mutate({ id, rating })}
                 />
               </div>
             </>

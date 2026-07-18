@@ -191,8 +191,11 @@ CREATE TABLE IF NOT EXISTS workout_programs (
   schedule TEXT NOT NULL DEFAULT '[]',
   frequency_per_week INTEGER,
   focus TEXT,
+  training_type TEXT DEFAULT 'academia',
+  days_of_week TEXT NOT NULL DEFAULT '[]',
   habit_id TEXT,
   cycle_id TEXT,
+  duration_weeks INTEGER DEFAULT 12,
   is_active INTEGER NOT NULL DEFAULT 1,
   notes TEXT,
   created_at TEXT NOT NULL,
@@ -221,6 +224,8 @@ CREATE TABLE IF NOT EXISTS workout_sessions (
   status TEXT NOT NULL DEFAULT 'a_fazer',
   exercises_log TEXT NOT NULL DEFAULT '[]',
   duration_minutes INTEGER,
+  planned_start_time TEXT,
+  planned_duration_minutes INTEGER,
   notes TEXT,
   task_id TEXT,
   cycle_id TEXT,
@@ -259,3 +264,30 @@ CREATE TABLE IF NOT EXISTS media_list_items (
   updated_at TEXT NOT NULL,
   FOREIGN KEY (list_id) REFERENCES media_lists(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS release_schedules (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  subtitle TEXT,
+  media_type TEXT NOT NULL,
+  release_date TEXT NOT NULL,
+  release_time TEXT,
+  status TEXT NOT NULL DEFAULT 'upcoming',
+  media_list_id TEXT,
+  media_item_id TEXT,
+  link_to_calendar INTEGER NOT NULL DEFAULT 0,
+  task_id TEXT,
+  color TEXT,
+  notes TEXT,
+  recurrence TEXT,
+  notify_days_before INTEGER,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (media_list_id) REFERENCES media_lists(id) ON DELETE SET NULL,
+  FOREIGN KEY (media_item_id) REFERENCES media_list_items(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_release_schedules_user_date
+  ON release_schedules(user_id, release_date);

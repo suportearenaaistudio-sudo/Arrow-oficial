@@ -14,7 +14,7 @@ fn json_fields(table: &str) -> &'static [&'static str] {
         "goals" => &["sub_goals", "milestones", "weekly_targets"],
         "tasks" => &["tags", "subtasks", "comments", "attachments"],
         "habits" => &["days_of_week", "completion_history"],
-        "workout_programs" => &["schedule"],
+        "workout_programs" => &["schedule", "days_of_week"],
         "workout_templates" => &["exercises"],
         "workout_sessions" => &["exercises_log"],
         "media_list_items" => &["tags"],
@@ -27,6 +27,7 @@ fn bool_fields(table: &str) -> &'static [&'static str] {
         "tasks" => &["important"],
         "workout_programs" => &["is_active"],
         "media_lists" => &["is_system"],
+        "release_schedules" => &["link_to_calendar"],
         _ => &[],
     }
 }
@@ -111,6 +112,15 @@ fn value_to_sql(val: &Value) -> SqlValue {
     }
 }
 
+fn table_columns(conn: &Connection, table: &str) -> Result<std::collections::HashSet<String>, String> {
+    let sql = format!("PRAGMA table_info({})", table);
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| e.to_string())?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
 fn insert_row(conn: &Connection, table: &str, data: Map<String, Value>) -> Result<String, String> {
     let id = data
         .get("id")
@@ -119,6 +129,8 @@ fn insert_row(conn: &Connection, table: &str, data: Map<String, Value>) -> Resul
         .unwrap_or_else(|| Uuid::new_v4().to_string());
     let mut row = data;
     row.insert("id".to_string(), json!(id));
+    let allowed = table_columns(conn, table)?;
+    row.retain(|k, _| allowed.contains(k));
     let row = stringify_fields(table, row);
     let cols: Vec<String> = row.keys().cloned().collect();
     let placeholders: Vec<&str> = cols.iter().map(|_| "?").collect();
@@ -201,6 +213,31 @@ impl ArrowDatabase {
         Ok(())
     }
 
+    fn column_exists(&self, table: &str, column: &str) -> bool {
+        let sql = format!("PRAGMA table_info({})", table);
+        let mut stmt = match self.conn.prepare(&sql) {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+        let names: Vec<String> = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .ok()
+            .into_iter()
+            .flatten()
+            .filter_map(|r| r.ok())
+            .collect();
+        names.iter().any(|name| name == column)
+    }
+
+    fn ensure_column(&self, table: &str, column: &str, definition: &str) -> Result<(), String> {
+        if !self.column_exists(table, column) {
+            self.conn
+                .execute(&format!("ALTER TABLE {} ADD COLUMN {}", table, definition), [])
+                .map_err(|e| format!("Falha ao migrar {}.{}: {}", table, column, e))?;
+        }
+        Ok(())
+    }
+
     fn migrate_schema(&self, from: i32) -> Result<(), String> {
         if from < 3 {
             let _ = self.conn.execute(
@@ -212,7 +249,67 @@ impl ArrowDatabase {
                 [],
             );
         }
+        if from < 4 {
+            self.ensure_column(
+                "workout_programs",
+                "training_type",
+                "training_type TEXT DEFAULT 'academia'",
+            )?;
+            self.ensure_column(
+                "workout_programs",
+                "days_of_week",
+                "days_of_week TEXT NOT NULL DEFAULT '[]'",
+            )?;
+            self.ensure_column(
+                "workout_sessions",
+                "planned_start_time",
+                "planned_start_time TEXT",
+            )?;
+            self.ensure_column(
+                "workout_sessions",
+                "planned_duration_minutes",
+                "planned_duration_minutes INTEGER",
+            )?;
+            self.conn
+                .execute_batch(
+                    "CREATE TABLE IF NOT EXISTS release_schedules (
+                      id TEXT PRIMARY KEY,
+                      user_id TEXT NOT NULL,
+                      title TEXT NOT NULL,
+                      subtitle TEXT,
+                      media_type TEXT NOT NULL,
+                      release_date TEXT NOT NULL,
+                      release_time TEXT,
+                      status TEXT NOT NULL DEFAULT 'upcoming',
+                      media_list_id TEXT,
+                      media_item_id TEXT,
+                      link_to_calendar INTEGER NOT NULL DEFAULT 0,
+                      task_id TEXT,
+                      color TEXT,
+                      notes TEXT,
+                      recurrence TEXT,
+                      notify_days_before INTEGER,
+                      sort_order INTEGER NOT NULL DEFAULT 0,
+                      created_at TEXT NOT NULL,
+                      updated_at TEXT NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_release_schedules_user_date
+                      ON release_schedules(user_id, release_date);",
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        if from < 5 {
+            self.ensure_column(
+                "workout_programs",
+                "duration_weeks",
+                "duration_weeks INTEGER DEFAULT 12",
+            )?;
+        }
         Ok(())
+    }
+
+    fn clamp_rating(val: Option<f64>) -> Option<f64> {
+        val.map(|r| (r * 10.0).round() / 10.0).map(|r| r.clamp(0.0, 10.0))
     }
 
     pub fn seed_default_media_lists(&self, user_id: &str) -> Result<(), String> {
@@ -878,6 +975,9 @@ impl ArrowDatabase {
         let mut row = value_to_map(data);
         row.insert("user_id".to_string(), json!(user_id));
         row.entry("schedule".to_string()).or_insert(json!([]));
+        row.entry("days_of_week".to_string()).or_insert(json!([]));
+        row.entry("training_type".to_string()).or_insert(json!("academia"));
+        row.entry("duration_weeks".to_string()).or_insert(json!(12));
         row.entry("is_active".to_string()).or_insert(json!(true));
         row.insert("created_at".to_string(), json!(ts));
         row.insert("updated_at".to_string(), json!(ts));
@@ -1100,8 +1200,8 @@ impl ArrowDatabase {
                 let existing: i32 = self
                     .conn
                     .query_row(
-                        "SELECT COUNT(*) FROM workout_sessions WHERE user_id = ? AND program_id = ? AND date = ?",
-                        params![user_id, program_id, date],
+                        "SELECT COUNT(*) FROM workout_sessions WHERE user_id = ? AND program_id = ? AND date = ? AND template_id = ?",
+                        params![user_id, program_id, date, template_id],
                         |row| row.get(0),
                     )
                     .unwrap_or(0);
@@ -1111,9 +1211,27 @@ impl ArrowDatabase {
                 let template = get_by_id(&self.conn, "workout_templates", template_id)?;
                 let template_name = template.get("name").and_then(|v| v.as_str()).unwrap_or("Treino");
                 let label = template.get("label").and_then(|v| v.as_str()).unwrap_or("");
+                let training_type = program
+                    .get("training_type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("academia");
+                let planned_start = entry
+                    .get("planned_start_time")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let planned_duration = entry
+                    .get("planned_duration_minutes")
+                    .and_then(|v| v.as_i64());
+
+                let task_title = match training_type {
+                    "corrida" | "natacao" | "ciclismo" => {
+                        format!("{} — {}", capitalize_training(training_type), template_name)
+                    }
+                    _ => format!("Treino {} — {}", label, template_name),
+                };
 
                 let mut task_row = Map::new();
-                task_row.insert("title".to_string(), json!(format!("Treino {} — {}", label, template_name)));
+                task_row.insert("title".to_string(), json!(task_title));
                 task_row.insert("status".to_string(), json!("a_fazer"));
                 task_row.insert("priority".to_string(), json!("media"));
                 task_row.insert("cycle_id".to_string(), json!(cycle_id));
@@ -1130,6 +1248,12 @@ impl ArrowDatabase {
                 session_row.insert("cycle_id".to_string(), json!(cycle_id));
                 session_row.insert("week_number".to_string(), json!(week_number));
                 session_row.insert("task_id".to_string(), json!(task_id));
+                if let Some(ref t) = planned_start {
+                    session_row.insert("planned_start_time".to_string(), json!(t));
+                }
+                if let Some(d) = planned_duration {
+                    session_row.insert("planned_duration_minutes".to_string(), json!(d));
+                }
                 let session = self.create_workout_session(user_id, Value::Object(session_row))?;
                 created.push(session);
             }
@@ -1210,6 +1334,9 @@ impl ArrowDatabase {
     pub fn create_media_item(&self, user_id: &str, data: Value) -> Result<Map<String, Value>, String> {
         let ts = now_iso();
         let mut row = value_to_map(data);
+        if let Some(rating) = row.get("rating").and_then(|v| v.as_f64()) {
+            row.insert("rating".to_string(), json!(Self::clamp_rating(Some(rating)).unwrap_or(0.0)));
+        }
         row.insert("user_id".to_string(), json!(user_id));
         row.entry("tags".to_string()).or_insert(json!([]));
         row.entry("status".to_string()).or_insert(json!("a_ver"));
@@ -1221,6 +1348,9 @@ impl ArrowDatabase {
 
     pub fn update_media_item(&self, id: &str, updates: Value) -> Result<Map<String, Value>, String> {
         let mut row = value_to_map(updates);
+        if let Some(rating) = row.get("rating").and_then(|v| v.as_f64()) {
+            row.insert("rating".to_string(), json!(Self::clamp_rating(Some(rating)).unwrap_or(0.0)));
+        }
         row.insert("updated_at".to_string(), json!(now_iso()));
         update_row(&self.conn, "media_list_items", id, row)?;
         get_by_id(&self.conn, "media_list_items", &id)
@@ -1248,5 +1378,201 @@ impl ArrowDatabase {
             updates.insert("completed_at".to_string(), json!(chrono::Utc::now().format("%Y-%m-%d").to_string()));
         }
         self.update_media_item(id, Value::Object(updates))
+    }
+
+    // ─── Release schedules ────────────────────────────────────
+
+    fn sync_release_calendar_task(
+        &self,
+        user_id: &str,
+        title: &str,
+        release_date: &str,
+        link: bool,
+        existing_task_id: Option<&str>,
+    ) -> Result<Option<String>, String> {
+        if link {
+            let mut task_row = Map::new();
+            task_row.insert("title".to_string(), json!(title));
+            task_row.insert("due_date".to_string(), json!(release_date));
+            task_row.insert("status".to_string(), json!("a_fazer"));
+            task_row.insert("priority".to_string(), json!("media"));
+            task_row.insert("tags".to_string(), json!(["lancamento"]));
+            if let Some(tid) = existing_task_id.filter(|s| !s.is_empty()) {
+                self.update_task(tid, Value::Object(task_row))?;
+                Ok(Some(tid.to_string()))
+            } else {
+                let task = self.create_task(user_id, Value::Object(task_row))?;
+                Ok(task.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()))
+            }
+        } else if let Some(tid) = existing_task_id.filter(|s| !s.is_empty()) {
+            let _ = self.delete_task(tid);
+            Ok(None)
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn list_release_schedules(
+        &self,
+        user_id: &str,
+        media_type: Option<&str>,
+    ) -> Result<Vec<Map<String, Value>>, String> {
+        if let Some(mt) = media_type {
+            let mut stmt = self
+                .conn
+                .prepare(
+                    "SELECT * FROM release_schedules WHERE user_id = ? AND media_type = ? ORDER BY release_date ASC, sort_order ASC, created_at ASC",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map(params![user_id, mt], |row| row_to_map(row))
+                .map_err(|e| e.to_string())?;
+            return rows
+                .map(|r| r.map(|row| parse_row("release_schedules", row)))
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(|e| e.to_string());
+        }
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT * FROM release_schedules WHERE user_id = ? ORDER BY release_date ASC, sort_order ASC, created_at ASC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![user_id], |row| row_to_map(row))
+            .map_err(|e| e.to_string())?;
+        rows.map(|r| r.map(|row| parse_row("release_schedules", row)))
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn create_release_schedule(
+        &self,
+        user_id: &str,
+        data: Value,
+    ) -> Result<Map<String, Value>, String> {
+        let ts = now_iso();
+        let mut row = value_to_map(data);
+        let title = row
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let release_date = row
+            .get("release_date")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let link = row
+            .get("link_to_calendar")
+            .map(|v| v.as_bool().unwrap_or(false) || v.as_i64().unwrap_or(0) != 0)
+            .unwrap_or(false);
+
+        if link && !title.is_empty() && !release_date.is_empty() {
+            let task_id = self.sync_release_calendar_task(user_id, &title, &release_date, true, None)?;
+            if let Some(tid) = task_id {
+                row.insert("task_id".to_string(), json!(tid));
+            }
+        }
+
+        row.insert("user_id".to_string(), json!(user_id));
+        row.entry("status".to_string()).or_insert(json!("upcoming"));
+        row.entry("sort_order".to_string()).or_insert(json!(0));
+        row.insert("created_at".to_string(), json!(ts));
+        row.insert("updated_at".to_string(), json!(ts));
+        let id = insert_row(&self.conn, "release_schedules", row)?;
+        get_by_id(&self.conn, "release_schedules", &id)
+    }
+
+    pub fn update_release_schedule(
+        &self,
+        id: &str,
+        user_id: &str,
+        updates: Value,
+    ) -> Result<Map<String, Value>, String> {
+        let existing = get_by_id(&self.conn, "release_schedules", id)?;
+        let mut row = value_to_map(updates);
+        let title = row
+            .get("title")
+            .and_then(|v| v.as_str())
+            .or_else(|| existing.get("title").and_then(|v| v.as_str()))
+            .unwrap_or("")
+            .to_string();
+        let release_date = row
+            .get("release_date")
+            .and_then(|v| v.as_str())
+            .or_else(|| existing.get("release_date").and_then(|v| v.as_str()))
+            .unwrap_or("")
+            .to_string();
+        let link = row
+            .get("link_to_calendar")
+            .map(|v| v.as_bool().unwrap_or(false) || v.as_i64().unwrap_or(0) != 0)
+            .or_else(|| {
+                existing
+                    .get("link_to_calendar")
+                    .map(|v| v.as_bool().unwrap_or(false) || v.as_i64().unwrap_or(0) != 0)
+            })
+            .unwrap_or(false);
+        let existing_task = existing
+            .get("task_id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        let task_id = self.sync_release_calendar_task(
+            user_id,
+            &title,
+            &release_date,
+            link,
+            existing_task.as_deref(),
+        )?;
+        if let Some(tid) = task_id {
+            row.insert("task_id".to_string(), json!(tid));
+        } else if !link {
+            row.insert("task_id".to_string(), Value::Null);
+        }
+
+        row.insert("updated_at".to_string(), json!(now_iso()));
+        update_row(&self.conn, "release_schedules", id, row)?;
+        get_by_id(&self.conn, "release_schedules", &id)
+    }
+
+    pub fn delete_release_schedule(&self, id: &str, delete_linked_task: bool) -> Result<(), String> {
+        if delete_linked_task {
+            if let Ok(row) = get_by_id(&self.conn, "release_schedules", id) {
+                if let Some(tid) = row.get("task_id").and_then(|v| v.as_str()) {
+                    let _ = self.delete_task(tid);
+                }
+            }
+        }
+        self.conn
+            .execute("DELETE FROM release_schedules WHERE id = ?", params![id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn mark_release_released(&self, id: &str) -> Result<Map<String, Value>, String> {
+        let mut updates = Map::new();
+        updates.insert("status".to_string(), json!("released"));
+        updates.insert("updated_at".to_string(), json!(now_iso()));
+        update_row(&self.conn, "release_schedules", id, updates)?;
+        get_by_id(&self.conn, "release_schedules", &id)
+    }
+}
+
+fn capitalize_training(t: &str) -> String {
+    match t {
+        "corrida" => "Corrida".to_string(),
+        "natacao" => "Natação".to_string(),
+        "ciclismo" => "Ciclismo".to_string(),
+        "luta" => "Luta".to_string(),
+        "funcional" => "Funcional".to_string(),
+        "academia" => "Academia".to_string(),
+        other => {
+            let mut c = other.chars();
+            match c.next() {
+                None => String::new(),
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+            }
+        }
     }
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Star, MoreHorizontal, Crown, Eye, Bookmark, X } from 'lucide-react';
+import { Plus, MoreHorizontal, Crown, Eye, Bookmark, X } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import type { MediaListItem, MediaItemStatus } from '@/types/arrow';
 import type { ListTheme } from '@/lib/list-themes';
@@ -22,6 +22,23 @@ interface MediaKanbanColumnProps {
   onAdd: (data: { title: string; subtitle: string; rating?: number }) => void;
   onMove: (id: string, status: MediaItemStatus, rank?: number) => void;
   onDelete: (id: string) => void;
+  onUpdateRating?: (id: string, rating: number) => void;
+}
+
+function RatingDisplay({ rating, accent }: { rating: number; accent: string }) {
+  const pct = Math.min(100, (rating / 10) * 100);
+  return (
+    <div className="mt-1.5 space-y-1">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-bold tabular-nums" style={{ color: accent }}>
+          {rating.toFixed(1)}/10
+        </span>
+      </div>
+      <div className="h-1 rounded-full overflow-hidden" style={{ background: `${accent}22` }}>
+        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: accent }} />
+      </div>
+    </div>
+  );
 }
 
 function MediaItemCard({
@@ -30,14 +47,18 @@ function MediaItemCard({
   rank,
   onMove,
   onDelete,
+  onUpdateRating,
 }: {
   item: MediaListItem;
   accent: string;
   rank?: number;
   onMove: (id: string, status: MediaItemStatus, rank?: number) => void;
   onDelete: (id: string) => void;
+  onUpdateRating?: (id: string, rating: number) => void;
 }) {
   const { theme, isDark } = useTheme();
+  const [editingRating, setEditingRating] = useState(false);
+  const [ratingDraft, setRatingDraft] = useState(item.rating ?? 0);
 
   return (
     <motion.div
@@ -71,16 +92,39 @@ function MediaItemCard({
               {item.subtitle}
             </p>
           )}
-          {item.rating != null && item.rating > 0 && (
-            <div className="flex items-center gap-0.5 mt-1.5">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Star
-                  key={i}
-                  className="w-2.5 h-2.5"
-                  fill={i < Math.round(item.rating!) ? accent : 'none'}
-                  style={{ color: i < Math.round(item.rating!) ? accent : theme.textMuted }}
-                />
-              ))}
+          {item.rating != null && item.rating > 0 && !editingRating && (
+            <button type="button" onClick={() => setEditingRating(true)} className="w-full text-left">
+              <RatingDisplay rating={item.rating} accent={accent} />
+            </button>
+          )}
+          {editingRating && (
+            <div className="mt-1.5 space-y-1">
+              <input
+                type="number"
+                min={0}
+                max={10}
+                step={0.1}
+                value={ratingDraft}
+                onChange={(e) => setRatingDraft(Number(e.target.value))}
+                className="w-full px-2 py-1 rounded-lg text-xs"
+                style={{ border: `1px solid ${theme.border}` }}
+              />
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  className="text-[10px] px-2 py-0.5 rounded-md text-white"
+                  style={{ background: accent }}
+                  onClick={() => {
+                    onUpdateRating?.(item.id, Math.min(10, Math.max(0, ratingDraft)));
+                    setEditingRating(false);
+                  }}
+                >
+                  OK
+                </button>
+                <button type="button" className="text-[10px] px-2 py-0.5" onClick={() => setEditingRating(false)}>
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -98,6 +142,11 @@ function MediaItemCard({
                   Mover para {STATUS_META[s].label}
                 </DropdownMenuItem>
               ))}
+            {onUpdateRating && (
+              <DropdownMenuItem onClick={() => setEditingRating(true)}>
+                Editar nota
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => onDelete(item.id)} className="text-red-500">
               Excluir
             </DropdownMenuItem>
@@ -109,12 +158,10 @@ function MediaItemCard({
 }
 
 function InlineAddForm({
-  status,
   listTheme,
   onAdd,
   onCancel,
 }: {
-  status: MediaItemStatus;
   listTheme: ListTheme;
   onAdd: (data: { title: string; subtitle: string; rating?: number }) => void;
   onCancel: () => void;
@@ -122,15 +169,19 @@ function InlineAddForm({
   const { theme, isDark } = useTheme();
   const [title, setTitle] = useState('');
   const [subtitle, setSubtitle] = useState('');
-  const [rating, setRating] = useState(0);
+  const [rating, setRating] = useState<number | ''>('');
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim()) return;
-    onAdd({ title: title.trim(), subtitle: subtitle.trim(), rating: rating || undefined });
+    onAdd({
+      title: title.trim(),
+      subtitle: subtitle.trim(),
+      rating: rating === '' ? undefined : Number(rating),
+    });
     setTitle('');
     setSubtitle('');
-    setRating(0);
+    setRating('');
     onCancel();
   }
 
@@ -170,23 +221,20 @@ function InlineAddForm({
           border: `1px solid ${theme.border}`,
         }}
       />
-      {status === 'top' && (
-        <div className="flex items-center gap-2">
-          <span className="text-[11px]" style={{ color: theme.textMuted }}>Nota</span>
-          <input
-            type="range"
-            min={0}
-            max={5}
-            step={0.5}
-            value={rating}
-            onChange={e => setRating(Number(e.target.value))}
-            className="flex-1"
-          />
-          <span className="text-xs font-semibold w-6" style={{ color: listTheme.accent }}>
-            {rating || '—'}
-          </span>
-        </div>
-      )}
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] shrink-0" style={{ color: theme.textMuted }}>Nota (0–10)</span>
+        <input
+          type="number"
+          min={0}
+          max={10}
+          step={0.1}
+          value={rating}
+          onChange={e => setRating(e.target.value === '' ? '' : Number(e.target.value))}
+          placeholder="opcional"
+          className="flex-1 px-2 py-1.5 rounded-lg text-xs"
+          style={{ border: `1px solid ${theme.border}` }}
+        />
+      </div>
       <div className="flex gap-2">
         <button
           type="submit"
@@ -195,12 +243,7 @@ function InlineAddForm({
         >
           Adicionar
         </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-3 py-1.5 rounded-lg text-xs"
-          style={{ color: theme.textMuted }}
-        >
+        <button type="button" onClick={onCancel} className="px-3 py-1.5 rounded-lg text-xs" style={{ color: theme.textMuted }}>
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
@@ -215,6 +258,7 @@ export default function MediaKanbanColumn({
   onAdd,
   onMove,
   onDelete,
+  onUpdateRating,
 }: MediaKanbanColumnProps) {
   const { theme, isDark } = useTheme();
   const [adding, setAdding] = useState(false);
@@ -234,7 +278,6 @@ export default function MediaKanbanColumn({
         border: `1px solid ${isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)'}`,
       }}
     >
-      {/* Column header */}
       <div
         className="px-4 py-3 flex items-center gap-2.5"
         style={{
@@ -264,7 +307,6 @@ export default function MediaKanbanColumn({
         </span>
       </div>
 
-      {/* Items */}
       <div className="flex-1 p-3 space-y-2 overflow-y-auto">
         {items.length === 0 && !adding && (
           <div className="flex flex-col items-center justify-center py-10 opacity-50">
@@ -282,13 +324,13 @@ export default function MediaKanbanColumn({
             rank={status === 'top' ? i + 1 : undefined}
             onMove={onMove}
             onDelete={onDelete}
+            onUpdateRating={onUpdateRating}
           />
         ))}
 
         <AnimatePresence>
           {adding && (
             <InlineAddForm
-              status={status}
               listTheme={listTheme}
               onAdd={onAdd}
               onCancel={() => setAdding(false)}
@@ -297,7 +339,6 @@ export default function MediaKanbanColumn({
         </AnimatePresence>
       </div>
 
-      {/* Add button */}
       {!adding && (
         <div className="p-3 pt-0">
           <button

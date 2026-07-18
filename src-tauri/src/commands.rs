@@ -621,6 +621,55 @@ pub fn db_media_items_move(
     Ok(json!(vault.get_database()?.move_media_item(&id, &status, rank)?))
 }
 
+#[tauri::command]
+pub fn db_release_schedules_list(
+    state: State<'_, AppData>,
+    media_type: Option<String>,
+) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    Ok(json!(vault.get_database()?.list_release_schedules(
+        &user_id,
+        media_type.as_deref(),
+    )?))
+}
+
+#[tauri::command]
+pub fn db_release_schedules_create(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    Ok(json!(vault.get_database()?.create_release_schedule(&user_id, data)?))
+}
+
+#[tauri::command]
+pub fn db_release_schedules_update(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    let id = data.get("id").and_then(|v| v.as_str()).ok_or_else(|| "id é obrigatório".to_string())?;
+    let mut updates = data.as_object().cloned().unwrap_or_default();
+    updates.remove("id");
+    Ok(json!(vault.get_database()?.update_release_schedule(id, &user_id, Value::Object(updates))?))
+}
+
+#[tauri::command]
+pub fn db_release_schedules_delete(
+    state: State<'_, AppData>,
+    id: String,
+    delete_linked_task: Option<bool>,
+) -> Result<(), String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    vault
+        .get_database()?
+        .delete_release_schedule(&id, delete_linked_task.unwrap_or(true))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn db_release_schedules_mark_released(state: State<'_, AppData>, id: String) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    Ok(json!(vault.get_database()?.mark_release_released(&id)?))
+}
+
 // ─── Notes commands ─────────────────────────────────────────
 
 #[tauri::command]

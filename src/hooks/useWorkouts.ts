@@ -2,9 +2,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { desktopAPI } from '@/lib/desktop-api';
 import { useVault } from '@/contexts/VaultContext';
 import { useNotification } from './useNotification';
+import { trainingUsesSplit } from '@/lib/workout-config';
 import type {
   WorkoutProgram, WorkoutTemplate, WorkoutSession,
   ExerciseLog, ExerciseProgressPoint, WorkoutSplitType, WorkoutFocus,
+  WorkoutTrainingType,
 } from '@/types/arrow';
 
 const SPLIT_LABELS: Record<WorkoutSplitType, string[]> = {
@@ -12,7 +14,7 @@ const SPLIT_LABELS: Record<WorkoutSplitType, string[]> = {
   ABC: ['A', 'B', 'C'],
   ABCD: ['A', 'B', 'C', 'D'],
   ABCDE: ['A', 'B', 'C', 'D', 'E'],
-  custom: [],
+  custom: ['S'],
 };
 
 export function useWorkouts() {
@@ -40,39 +42,53 @@ export function useWorkouts() {
       split_type: WorkoutSplitType;
       frequency_per_week: number;
       focus: WorkoutFocus;
+      training_type: WorkoutTrainingType;
+      days_of_week: number[];
+      duration_weeks: number;
+      cycle_id?: string;
       create_habit?: boolean;
     }) => {
+      const usesSplit = trainingUsesSplit(data.training_type);
+      const labels = usesSplit ? SPLIT_LABELS[data.split_type] : ['S'];
+
       const program = await desktopAPI.db.workouts.programs.create({
         name: data.name,
         split_type: data.split_type,
         frequency_per_week: data.frequency_per_week,
         focus: data.focus,
+        training_type: data.training_type,
+        days_of_week: data.days_of_week,
+        duration_weeks: data.duration_weeks,
+        cycle_id: data.cycle_id,
         schedule: [],
         is_active: true,
       }) as WorkoutProgram;
 
-      const labels = SPLIT_LABELS[data.split_type];
       for (const label of labels) {
         await desktopAPI.db.workouts.templates.create({
           program_id: program.id,
           label,
-          name: `Treino ${label}`,
+          name: usesSplit ? `Treino ${label}` : 'Sessão',
           exercises: [],
         });
       }
 
       if (data.create_habit) {
-        const habit = await desktopAPI.db.habits.create({
-          title: data.name,
-          category: 'saude',
-          frequency_type: 'intermitente',
-          frequency_value: data.frequency_per_week,
-          routine: 'qualquer',
-        });
-        await desktopAPI.db.workouts.programs.update({
-          id: program.id,
-          habit_id: (habit as { id: string }).id,
-        });
+        try {
+          const habit = await desktopAPI.db.habits.create({
+            title: data.name,
+            category: 'saude',
+            frequency_type: 'intermitente',
+            frequency_value: data.frequency_per_week,
+            routine: 'qualquer',
+          });
+          await desktopAPI.db.workouts.programs.update({
+            id: program.id,
+            habit_id: (habit as { id: string }).id,
+          });
+        } catch {
+          // Programa criado; hábito é opcional
+        }
       }
 
       return program;
@@ -81,7 +97,10 @@ export function useWorkouts() {
       queryClient.invalidateQueries({ queryKey: ['workout-programs'] });
       showSuccess('Programa criado!');
     },
-    onError: () => showError('Erro ao criar programa'),
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      showError(msg.includes('Erro') ? msg : `Erro ao criar programa: ${msg}`);
+    },
   });
 
   const updateProgram = useMutation({
@@ -89,6 +108,13 @@ export function useWorkouts() {
       desktopAPI.db.workouts.programs.update(data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workout-programs'] }),
     onError: () => showError('Erro ao atualizar programa'),
+  });
+
+  const updateSession = useMutation({
+    mutationFn: (data: Partial<WorkoutSession> & { id: string }) =>
+      desktopAPI.db.workouts.sessions.update(data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workout-sessions'] }),
+    onError: () => showError('Erro ao atualizar sessão'),
   });
 
   const deleteProgram = useMutation({
@@ -186,10 +212,15 @@ export function useWorkouts() {
 
   const programs = programsQuery.data || [];
   const sessions = sessionsQuery.data || [];
-  const activeProgram = programs.find(p => p.is_active) || programs[0];
+  const activePrograms = programs.filter(p => p.is_active);
+  const activeProgram = activePrograms[0] || programs[0];
 
-  function getSessionsByWeek(cycleId: string, weekNumber: number) {
-    return sessions.filter(s => s.cycle_id === cycleId && s.week_number === weekNumber);
+  function getSessionsByWeek(cycleId: string, weekNumber: number, programId?: string) {
+    return sessions.filter(s =>
+      s.cycle_id === cycleId &&
+      s.week_number === weekNumber &&
+      (!programId || s.program_id === programId),
+    );
   }
 
   function getWeekWorkoutScore(cycleId: string, weekNumber: number) {
@@ -211,11 +242,13 @@ export function useWorkouts() {
 
   return {
     programs,
+    activePrograms,
     sessions,
     activeProgram,
     isLoading: programsQuery.isLoading || sessionsQuery.isLoading,
     createProgram,
     updateProgram,
+    updateSession,
     deleteProgram,
     completeSession,
     generateWeek,

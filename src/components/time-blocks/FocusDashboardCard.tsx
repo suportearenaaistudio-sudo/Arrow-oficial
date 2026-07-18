@@ -27,6 +27,10 @@ export default function FocusDashboardCard() {
     dayProgress,
     totalPlannedMin,
     totalFilledMin,
+    visibleSpanMin,
+    viewStartMin,
+    canPan,
+    setViewStartMin,
     setSelectedId,
   } = useTimeBlocks();
 
@@ -41,7 +45,8 @@ export default function FocusDashboardCard() {
     setSelectedId(id);
     setActiveBlockId(id);
     const block = blocks.find((b) => b.id === id);
-    if (block?.taskId) setTask(block.taskId, block.taskTitle);
+    const firstTask = block?.tasks?.[0];
+    if (firstTask) setTask(firstTask.id, firstTask.title);
   }
 
   const plannedLabel =
@@ -92,7 +97,10 @@ export default function FocusDashboardCard() {
           activeBlockId={activeBlockId}
           liveFillMin={liveFillMin}
           onSelect={handleSelect}
-          period="day"
+          visibleSpanMin={visibleSpanMin}
+          viewStartMin={viewStartMin}
+          onViewStartChange={canPan ? setViewStartMin : undefined}
+          canPan={canPan}
           compact
         />
       </div>

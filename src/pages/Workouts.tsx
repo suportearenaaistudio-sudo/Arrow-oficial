@@ -9,30 +9,14 @@ import { useWorkouts, useWorkoutTemplates, useExerciseProgress } from '@/hooks/u
 import { useCycles, getCurrentWeek } from '@/hooks/useCycles';
 import type {
   WorkoutSplitType, WorkoutSession, WorkoutExercise, ExerciseLog, ExerciseSet, WorkoutFocus,
+  WorkoutTrainingType, WorkoutScheduleEntry,
 } from '@/types/arrow';
+import WorkoutProgramWizard, { DEFAULT_WIZARD, type WorkoutWizardForm } from '@/components/workouts/WorkoutProgramWizard';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
-  SPLIT_FREQUENCY, FOCUS_OPTIONS, FOCUS_LABELS, clampFrequency, defaultExercisesForFocus,
+  SPLIT_FREQUENCY, FOCUS_LABELS, clampFrequency, defaultExercisesForFocus,
+  TRAINING_TYPE_OPTIONS, TRAINING_TYPE_LABELS, trainingUsesSplit, WEEKDAY_LABELS, WEEKDAY_ORDER,
 } from '@/lib/workout-config';
-
-const DAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-const SPLIT_OPTIONS: WorkoutSplitType[] = ['AB', 'ABC', 'ABCD', 'ABCDE'];
-
-interface WizardForm {
-  name: string;
-  split_type: WorkoutSplitType;
-  frequency_per_week: number;
-  focus: WorkoutFocus;
-  create_habit: boolean;
-}
-
-const DEFAULT_WIZARD: WizardForm = {
-  name: '',
-  split_type: 'ABC',
-  frequency_per_week: 4,
-  focus: 'hipertrofia',
-  create_habit: true,
-};
 
 function getWeekDatesByDayIndex(): string[] {
   const dates: string[] = new Array(7).fill('');
@@ -47,23 +31,23 @@ function getWeekDatesByDayIndex(): string[] {
   return dates;
 }
 
-const DISPLAY_DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+const DISPLAY_DAY_ORDER = WEEKDAY_ORDER;
 
 export default function Workouts() {
   const { theme, isDark } = useTheme();
   const { activeCycle } = useCycles();
   const {
-    programs, sessions, activeProgram, isLoading,
-    createProgram, updateProgram, deleteProgram,
+    programs, sessions, activePrograms, isLoading,
+    createProgram, updateProgram, deleteProgram, updateSession,
     completeSession, generateWeek, getTodaySession, getSessionsByWeek,
   } = useWorkouts();
 
   const [selectedProgramId, setSelectedProgramId] = useState<string | null>(null);
-  const programId = selectedProgramId || activeProgram?.id || null;
+  const programId = selectedProgramId || activePrograms[0]?.id || programs[0]?.id || null;
   const { templates, updateTemplate } = useWorkoutTemplates(programId);
 
   const [wizardOpen, setWizardOpen] = useState(false);
-  const [wizardForm, setWizardForm] = useState<WizardForm>(DEFAULT_WIZARD);
+  const [wizardForm, setWizardForm] = useState<WorkoutWizardForm>(DEFAULT_WIZARD);
   const [completeOpen, setCompleteOpen] = useState(false);
   const [completingSession, setCompletingSession] = useState<WorkoutSession | null>(null);
   const [exerciseLogs, setExerciseLogs] = useState<ExerciseLog[]>([]);
@@ -81,6 +65,36 @@ export default function Workouts() {
   const program = programs.find(p => p.id === programId);
   const weekDates = getWeekDatesByDayIndex();
 
+  function handleTrainingTypeChange(type: WorkoutTrainingType) {
+    const opt = TRAINING_TYPE_OPTIONS.find(t => t.id === type)!;
+    setWizardForm(f => ({
+      ...f,
+      training_type: type,
+      focus: opt.defaultFocus,
+      split_type: opt.usesSplit ? f.split_type : 'custom',
+      frequency_per_week: opt.usesSplit ? f.frequency_per_week : Math.min(f.frequency_per_week, f.days_of_week.length || 3),
+    }));
+  }
+
+  function toggleWizardDay(day: number) {
+    setWizardForm(f => {
+      const has = f.days_of_week.includes(day);
+      if (has) {
+        return { ...f, days_of_week: f.days_of_week.filter(d => d !== day) };
+      }
+      if (f.days_of_week.length >= f.frequency_per_week) return f;
+      return { ...f, days_of_week: [...f.days_of_week, day].sort((a, b) => a - b) };
+    });
+  }
+
+  function handleFrequencyChange(freq: number) {
+    setWizardForm(f => {
+      let days = [...f.days_of_week];
+      while (days.length > freq) days = days.slice(0, -1);
+      return { ...f, frequency_per_week: freq, days_of_week: days };
+    });
+  }
+
   function handleSplitChange(split: WorkoutSplitType) {
     const freq = SPLIT_FREQUENCY[split];
     setWizardForm(f => ({
@@ -92,7 +106,14 @@ export default function Workouts() {
 
   function handleCreateProgram(e: React.FormEvent) {
     e.preventDefault();
-    createProgram.mutate(wizardForm, {
+    if (!wizardForm.name.trim()) return;
+    if (wizardForm.days_of_week.length === 0) {
+      return;
+    }
+    createProgram.mutate({
+      ...wizardForm,
+      cycle_id: activeCycle?.id,
+    }, {
       onSuccess: (p) => {
         setWizardOpen(false);
         setWizardForm(DEFAULT_WIZARD);
@@ -187,17 +208,25 @@ export default function Workouts() {
                         : 'transparent',
                       color: programId === p.id ? theme.textPrimary : theme.textSecondary,
                       fontWeight: programId === p.id ? 600 : 400,
+                      opacity: p.is_active ? 1 : 0.65,
                     }}
                   >
                     <Dumbbell className="w-4 h-4 flex-shrink-0" style={{ color: theme.accent }} />
                     <div className="min-w-0 flex-1">
                       <span className="text-sm truncate block">{p.name}</span>
                       <span className="text-[10px]" style={{ color: theme.textMuted }}>
-                        {p.split_type}
+                        {TRAINING_TYPE_LABELS[p.training_type || 'academia']}
+                        {p.split_type && trainingUsesSplit(p.training_type || 'academia') ? ` · ${p.split_type}` : ''}
                         {p.frequency_per_week ? ` · ${p.frequency_per_week}×/sem` : ''}
-                        {p.focus ? ` · ${FOCUS_LABELS[p.focus]}` : ''}
+                        {p.duration_weeks ? ` · ${p.duration_weeks} sem` : ''}
                       </span>
                     </div>
+                    {p.is_active && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-md font-semibold"
+                        style={{ background: theme.accentLight, color: theme.accent }}>
+                        ativo
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -234,51 +263,96 @@ export default function Workouts() {
               <div className="arrow-card p-5">
                 <h3 className="font-semibold mb-1" style={{ color: theme.textPrimary }}>Agenda Semanal</h3>
                 <p className="text-xs mb-4" style={{ color: theme.textMuted }}>
-                  Clique em um dia para atribuir um treino
+                  Adicione um ou mais treinos por dia
                 </p>
                 <div className="grid grid-cols-7 gap-2">
                   {DISPLAY_DAY_ORDER.map((dayIndex) => {
                     const date = weekDates[dayIndex];
-                    const session = weekSessions.find(s => s.date === date);
-                    const scheduled = program.schedule?.find(s => s.day === dayIndex);
-                    const scheduledTemplate = scheduled
-                      ? templates.find(t => t.id === scheduled.template_id)
-                      : null;
-                    const isDone = session?.status === 'feito';
+                    const daySessions = weekSessions.filter(s => s.date === date);
+                    const scheduled = (program.schedule || []).filter(s => s.day === dayIndex);
 
                     return (
-                      <div key={date} className="flex flex-col items-center gap-1">
+                      <div key={date} className="flex flex-col items-center gap-1 min-w-0">
                         <span className="text-[10px] font-medium" style={{ color: theme.textMuted }}>
-                          {DAY_NAMES[dayIndex]}
+                          {WEEKDAY_LABELS[dayIndex]}
                         </span>
-                        <div className="relative w-full">
-                          <select
-                            value={scheduled?.template_id || ''}
-                            onChange={e => {
-                              const templateId = e.target.value;
-                              const schedule = [...(program.schedule || [])].filter(s => s.day !== dayIndex);
-                              if (templateId) schedule.push({ day: dayIndex, template_id: templateId });
-                              updateProgram.mutate({ id: program.id, schedule });
+                        <div className="w-full space-y-1">
+                          {scheduled.map((entry, idx) => {
+                            const tmpl = templates.find(t => t.id === entry.template_id);
+                            const session = daySessions.find(s => s.template_id === entry.template_id);
+                            const isDone = session?.status === 'feito';
+                            return (
+                              <div key={`${dayIndex}-${idx}`} className="relative">
+                                <select
+                                  value={entry.template_id}
+                                  onChange={e => {
+                                    const schedule = [...(program.schedule || [])];
+                                    const globalIdx = schedule.findIndex(
+                                      (s, i) => s.day === dayIndex &&
+                                        schedule.filter(x => x.day === dayIndex).indexOf(s) === idx,
+                                    );
+                                    if (globalIdx >= 0) {
+                                      schedule[globalIdx] = { ...schedule[globalIdx], template_id: e.target.value };
+                                      updateProgram.mutate({ id: program.id, schedule });
+                                    }
+                                  }}
+                                  className="w-full rounded-lg text-[10px] px-1 py-1 appearance-none cursor-pointer"
+                                  style={{
+                                    background: isDone ? 'rgba(34,197,94,0.15)' : theme.accentLight,
+                                    border: `1px solid ${theme.border}`,
+                                    color: theme.textPrimary,
+                                  }}
+                                >
+                                  {templates.map(t => (
+                                    <option key={t.id} value={t.id}>{t.label}</option>
+                                  ))}
+                                </select>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const schedule = [...(program.schedule || [])];
+                                    let count = 0;
+                                    const next = schedule.filter(s => {
+                                      if (s.day !== dayIndex) return true;
+                                      if (count === idx) { count++; return false; }
+                                      count++;
+                                      return true;
+                                    });
+                                    updateProgram.mutate({ id: program.id, schedule: next });
+                                  }}
+                                  className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full text-[9px] leading-none"
+                                  style={{ background: theme.border, color: theme.textMuted }}
+                                >
+                                  ×
+                                </button>
+                                {tmpl && (
+                                  <p className="text-[8px] text-center truncate mt-0.5" style={{ color: theme.textMuted }}>
+                                    {entry.planned_start_time || '—'}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (templates.length === 0) return;
+                              const entry: WorkoutScheduleEntry = {
+                                day: dayIndex,
+                                template_id: templates[0].id,
+                                planned_start_time: '08:00',
+                                planned_duration_minutes: 60,
+                              };
+                              updateProgram.mutate({
+                                id: program.id,
+                                schedule: [...(program.schedule || []), entry],
+                              });
                             }}
-                            className="w-full aspect-square rounded-xl text-center text-xs appearance-none cursor-pointer"
-                            style={{
-                              background: isDone
-                                ? 'rgba(34,197,94,0.15)'
-                                : scheduledTemplate
-                                  ? theme.accentLight
-                                  : isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
-                              border: `1px solid ${isDone ? 'rgba(34,197,94,0.3)' : theme.border}`,
-                              color: theme.textPrimary,
-                            }}
+                            className="w-full py-1 rounded-lg text-[10px] font-medium"
+                            style={{ border: `1px dashed ${theme.border}`, color: theme.accent }}
                           >
-                            <option value="">—</option>
-                            {templates.map(t => (
-                              <option key={t.id} value={t.id}>{t.label}</option>
-                            ))}
-                          </select>
-                          {isDone && (
-                            <CheckCircle2 className="w-3 h-3 text-green-500 absolute bottom-1 right-1 pointer-events-none" />
-                          )}
+                            +
+                          </button>
                         </div>
                       </div>
                     );
@@ -417,18 +491,28 @@ export default function Workouts() {
                   <div className="space-y-2">
                     {weekSessions.map(session => {
                       const tmpl = templates.find(t => t.id === session.template_id);
+                      const prog = programs.find(p => p.id === session.program_id);
+                      const timeLabel = session.planned_start_time
+                        ? `${session.planned_start_time}${session.planned_duration_minutes ? ` · ${session.planned_duration_minutes}min` : ''}`
+                        : null;
                       return (
                         <div key={session.id} className="flex items-center gap-3 px-3 py-2 rounded-xl"
                           style={{ background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)' }}>
                           {session.status === 'feito'
                             ? <CheckCircle2 className="w-4 h-4 text-green-500" />
                             : <Circle className="w-4 h-4" style={{ color: theme.textMuted }} />}
-                          <span className="text-sm flex-1" style={{ color: theme.textPrimary }}>
-                            {tmpl?.label} — {tmpl?.name} ({session.date})
-                          </span>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-sm block truncate" style={{ color: theme.textPrimary }}>
+                              {timeLabel ? `${timeLabel} · ` : ''}{tmpl?.label} — {tmpl?.name}
+                            </span>
+                            <span className="text-[10px]" style={{ color: theme.textMuted }}>
+                              {session.date}
+                              {prog ? ` · ${TRAINING_TYPE_LABELS[prog.training_type || 'academia']}` : ''}
+                            </span>
+                          </div>
                           {session.status !== 'feito' && (
                             <button onClick={() => openCompleteDialog(session)}
-                              className="text-xs px-3 py-1 rounded-lg"
+                              className="text-xs px-3 py-1 rounded-lg shrink-0"
                               style={{ background: theme.accentLight, color: theme.accent }}>
                               Concluir
                             </button>
@@ -449,96 +533,17 @@ export default function Workouts() {
         </div>
       </div>
 
-      {/* Wizard novo programa */}
-      <Dialog open={wizardOpen} onOpenChange={setWizardOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader><DialogTitle>Novo Programa de Treino</DialogTitle></DialogHeader>
-          <form onSubmit={handleCreateProgram} className="space-y-5 mt-2">
-            <div>
-              <label className="arrow-label block mb-1.5">Nome do programa</label>
-              <input required value={wizardForm.name}
-                onChange={e => setWizardForm(f => ({ ...f, name: e.target.value }))}
-                className="w-full px-4 py-2.5 rounded-xl border text-sm" placeholder="Ex: Hipertrofia 2026" />
-            </div>
-
-            <div>
-              <label className="arrow-label block mb-1.5">Divisão (split)</label>
-              <div className="flex gap-2 flex-wrap">
-                {SPLIT_OPTIONS.map(s => (
-                  <button key={s} type="button"
-                    onClick={() => handleSplitChange(s)}
-                    className="px-4 py-2 rounded-xl text-sm font-medium transition-colors"
-                    style={{
-                      background: wizardForm.split_type === s ? theme.accent : theme.accentLight,
-                      color: wizardForm.split_type === s ? '#fff' : theme.accent,
-                    }}>
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="arrow-label">Frequência semanal</label>
-                <span className="text-sm font-bold" style={{ color: theme.accent }}>
-                  {wizardForm.frequency_per_week}× por semana
-                </span>
-              </div>
-              <p className="text-[11px] mb-2" style={{ color: theme.textMuted }}>
-                {SPLIT_FREQUENCY[wizardForm.split_type].label}
-              </p>
-              <input
-                type="range"
-                min={SPLIT_FREQUENCY[wizardForm.split_type].min}
-                max={SPLIT_FREQUENCY[wizardForm.split_type].max}
-                value={wizardForm.frequency_per_week}
-                onChange={e => setWizardForm(f => ({
-                  ...f,
-                  frequency_per_week: Number(e.target.value),
-                }))}
-                className="w-full"
-              />
-              <div className="flex justify-between text-[10px] mt-1" style={{ color: theme.textMuted }}>
-                <span>{SPLIT_FREQUENCY[wizardForm.split_type].min}×</span>
-                <span>{SPLIT_FREQUENCY[wizardForm.split_type].max}×</span>
-              </div>
-            </div>
-
-            <div>
-              <label className="arrow-label block mb-2">Foco do treino</label>
-              <div className="grid grid-cols-3 gap-2">
-                {FOCUS_OPTIONS.map(opt => {
-                  const FocusIcon = opt.icon;
-                  return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setWizardForm(f => ({ ...f, focus: opt.id }))}
-                    className="flex flex-col items-center gap-1 p-3 rounded-xl text-center transition-all"
-                    style={{
-                      background: wizardForm.focus === opt.id ? theme.accentLight : (isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'),
-                      border: `2px solid ${wizardForm.focus === opt.id ? theme.accent : 'transparent'}`,
-                    }}
-                  >
-                    <FocusIcon className="w-5 h-5" style={{ color: wizardForm.focus === opt.id ? theme.accent : theme.textMuted }} />
-                    <span className="text-xs font-semibold" style={{ color: theme.textPrimary }}>{opt.label}</span>
-                    <span className="text-[9px] leading-tight" style={{ color: theme.textMuted }}>{opt.description}</span>
-                  </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={wizardForm.create_habit}
-                onChange={e => setWizardForm(f => ({ ...f, create_habit: e.target.checked }))} />
-              Criar hábito vinculado ({wizardForm.frequency_per_week}× por semana)
-            </label>
-            <button type="submit" className="arrow-btn-primary w-full">Criar Programa</button>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <WorkoutProgramWizard
+        open={wizardOpen}
+        onOpenChange={setWizardOpen}
+        form={wizardForm}
+        setForm={setWizardForm}
+        onSubmit={handleCreateProgram}
+        onTrainingTypeChange={handleTrainingTypeChange}
+        onSplitChange={handleSplitChange}
+        onFrequencyChange={handleFrequencyChange}
+        onToggleDay={toggleWizardDay}
+      />
 
       {/* Dialog completar treino */}
       <Dialog open={completeOpen} onOpenChange={setCompleteOpen}>

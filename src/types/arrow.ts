@@ -319,10 +319,14 @@ export type AnalysisPeriod = 'atual' | 'mes' | 'trimestre' | 'ano';
 export type WorkoutSplitType = 'AB' | 'ABC' | 'ABCD' | 'ABCDE' | 'custom';
 export type WorkoutSessionStatus = 'a_fazer' | 'feito' | 'pulado';
 export type WorkoutFocus = 'forca' | 'resistencia' | 'hipertrofia';
+export type WorkoutTrainingType =
+  | 'academia' | 'corrida' | 'natacao' | 'luta' | 'ciclismo' | 'funcional' | 'outro';
 
 export interface WorkoutScheduleEntry {
   day: number;
   template_id: string;
+  planned_start_time?: string;
+  planned_duration_minutes?: number;
 }
 
 export interface WorkoutExercise {
@@ -356,8 +360,11 @@ export interface WorkoutProgram {
   schedule: WorkoutScheduleEntry[];
   frequency_per_week?: number;
   focus?: WorkoutFocus;
+  training_type?: WorkoutTrainingType;
+  days_of_week?: number[];
   habit_id?: string;
   cycle_id?: string;
+  duration_weeks?: number;
   is_active: boolean;
   notes?: string;
   created_at: string;
@@ -385,6 +392,8 @@ export interface WorkoutSession {
   status: WorkoutSessionStatus;
   exercises_log: ExerciseLog[];
   duration_minutes?: number;
+  planned_start_time?: string;
+  planned_duration_minutes?: number;
   notes?: string;
   task_id?: string;
   cycle_id?: string;
@@ -430,6 +439,31 @@ export interface MediaListItem {
   tags: string[];
   cover_path?: string;
   completed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ReleaseScheduleStatus = 'upcoming' | 'released' | 'cancelled';
+export type ReleaseRecurrence = 'weekly' | 'monthly' | 'yearly';
+
+export interface ReleaseSchedule {
+  id: string;
+  user_id: string;
+  title: string;
+  subtitle?: string;
+  media_type: MediaListType;
+  release_date: string;
+  release_time?: string;
+  status: ReleaseScheduleStatus;
+  media_list_id?: string;
+  media_item_id?: string;
+  link_to_calendar: boolean;
+  task_id?: string;
+  color?: string;
+  notes?: string;
+  recurrence?: ReleaseRecurrence;
+  notify_days_before?: number;
+  sort_order: number;
   created_at: string;
   updated_at: string;
 }

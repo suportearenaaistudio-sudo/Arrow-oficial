@@ -3,8 +3,8 @@ import { Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTheme } from '@/contexts/ThemeContext';
 import type { PlannedTimeBlock, TimeBlockType } from '@/types/time-blocks';
-import { TIME_BLOCK_META } from '@/types/time-blocks';
-import { detectOverlap, minToTimeStr, timeStrToMin } from '@/lib/time-blocks';
+import { BLOCK_COLOR_PRESETS, TIME_BLOCK_META } from '@/types/time-blocks';
+import { minToTimeStr, timeStrToMin } from '@/lib/time-blocks';
 import PomodoroTaskPicker from '@/components/pomodoro/PomodoroTaskPicker';
 import { useFocusTimer } from '@/contexts/FocusTimerContext';
 
@@ -12,14 +12,16 @@ interface TimeBlockFormProps {
   onAdd: (input: {
     startMin: number;
     endMin: number;
+    tasks?: PlannedTimeBlock['tasks'];
     taskId?: string | null;
     taskTitle?: string | null;
     label?: string;
     type?: TimeBlockType;
+    color?: string;
   }) => PlannedTimeBlock | null;
   onUpdate?: (
     blockId: string,
-    patch: Partial<Pick<PlannedTimeBlock, 'startMin' | 'endMin' | 'label' | 'type' | 'taskId' | 'taskTitle'>>,
+    patch: Partial<Pick<PlannedTimeBlock, 'startMin' | 'endMin' | 'label' | 'type' | 'tasks' | 'color'>>,
   ) => boolean;
   onCancelEdit?: () => void;
   editingBlock?: PlannedTimeBlock | null;
@@ -44,6 +46,7 @@ export default function TimeBlockForm({
   const [end, setEnd] = useState('10:30');
   const [label, setLabel] = useState('');
   const [type, setType] = useState<TimeBlockType>('focus');
+  const [color, setColor] = useState<string>(BLOCK_COLOR_PRESETS[0].color);
 
   const isEditing = !!editingBlock;
 
@@ -54,12 +57,14 @@ export default function TimeBlockForm({
       setEnd(minToTimeStr(editingBlock.endMin));
       setLabel(editingBlock.label);
       setType(editingBlock.type);
+      setColor(editingBlock.color ?? TIME_BLOCK_META[editingBlock.type].color);
     }
   }, [editingBlock]);
 
   function handleClose() {
     setOpen(false);
     setLabel('');
+    setColor(BLOCK_COLOR_PRESETS[0].color);
     onCancelEdit?.();
   }
 
@@ -71,11 +76,7 @@ export default function TimeBlockForm({
       return;
     }
 
-    const overlap = detectOverlap(blocks, startMin, endMin, editingBlock?.id);
-    if (overlap) {
-      toast.error(`Conflito com "${overlap.label}" (${minToTimeStr(overlap.startMin)}–${minToTimeStr(overlap.endMin)})`);
-      return;
-    }
+    const tasks = taskId ? [{ id: taskId, title: taskTitle || '' }] : editingBlock?.tasks ?? [];
 
     if (isEditing && editingBlock && onUpdate) {
       const ok = onUpdate(editingBlock.id, {
@@ -83,8 +84,8 @@ export default function TimeBlockForm({
         endMin,
         label: label.trim() || taskTitle || 'Bloco de foco',
         type,
-        taskId,
-        taskTitle,
+        color,
+        tasks,
       });
       if (ok) {
         toast.success('Bloco atualizado');
@@ -98,14 +99,14 @@ export default function TimeBlockForm({
     const block = onAdd({
       startMin,
       endMin,
-      taskId,
-      taskTitle,
+      tasks,
       label: label.trim() || taskTitle || 'Bloco de foco',
       type,
+      color,
     });
 
     if (!block) {
-      toast.error('Conflito de horário com outro bloco');
+      toast.error('Não foi possível adicionar o bloco');
       return;
     }
 
@@ -199,6 +200,32 @@ export default function TimeBlockForm({
       <p className="text-[9px]" style={{ color: theme.textMuted }}>
         {TIME_BLOCK_META[type].description}
       </p>
+
+      <div>
+        <p className="text-[10px] mb-1.5" style={{ color: theme.textMuted }}>
+          Cor do bloco
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {BLOCK_COLOR_PRESETS.map((preset) => (
+            <button
+              key={preset.color}
+              type="button"
+              title={preset.label}
+              onClick={() => setColor(preset.color)}
+              className="w-7 h-7 rounded-full transition-transform hover:scale-110"
+              style={{
+                background: preset.color,
+                boxShadow:
+                  color === preset.color
+                    ? `0 0 0 2px #fff, 0 0 0 4px ${preset.color}`
+                    : '0 1px 3px rgba(0,0,0,0.15)',
+              }}
+              aria-label={preset.label}
+              aria-pressed={color === preset.color}
+            />
+          ))}
+        </div>
+      </div>
 
       <button
         type="button"

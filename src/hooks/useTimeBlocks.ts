@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { PlannedTimeBlock, TimeBlockType } from '@/types/time-blocks';
+import { DEFAULT_VISIBLE_HOURS } from '@/types/time-blocks';
 import {
   addFillToBlock,
   blockFillPercent,
+  clampViewStart,
+  clampVisibleHours,
   createBlock,
-  detectOverlap,
+  defaultViewStart,
   duplicateBlock as duplicateBlockLib,
   findBlockAtTime,
   loadBlocksForDate,
@@ -20,6 +23,11 @@ export function useTimeBlocks(date?: string) {
   const [blocks, setBlocks] = useState<PlannedTimeBlock[]>(() => loadBlocksForDate(day));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const [visibleSpanHours, setVisibleSpanHoursState] = useState(DEFAULT_VISIBLE_HOURS);
+  const visibleSpanMin = visibleSpanHours * 60;
+  const [viewStartMin, setViewStartMin] = useState(() =>
+    defaultViewStart(DEFAULT_VISIBLE_HOURS * 60),
+  );
 
   useEffect(() => {
     setBlocks(loadBlocksForDate(day));
@@ -41,6 +49,19 @@ export function useTimeBlocks(date?: string) {
     return () => clearInterval(id);
   }, []);
 
+  const setVisibleSpanHours = useCallback((hours: number) => {
+    const h = clampVisibleHours(hours);
+    setVisibleSpanHoursState(h);
+    setViewStartMin((prev) => clampViewStart(prev, h * 60));
+  }, []);
+
+  const setViewStart = useCallback(
+    (start: number) => {
+      setViewStartMin(clampViewStart(start, visibleSpanMin));
+    },
+    [visibleSpanMin],
+  );
+
   const persist = useCallback(
     (next: PlannedTimeBlock[]) => {
       saveBlocksForDate(day, next);
@@ -54,24 +75,25 @@ export function useTimeBlocks(date?: string) {
     (input: {
       startMin: number;
       endMin: number;
+      tasks?: PlannedTimeBlock['tasks'];
       taskId?: string | null;
       taskTitle?: string | null;
       label?: string;
       type?: TimeBlockType;
+      color?: string;
     }) => {
-      const overlap = detectOverlap(blocks, input.startMin, input.endMin);
-      if (overlap) return null;
-
       const block = createBlock({
         date: day,
         startMin: input.startMin,
         endMin: input.endMin,
-        taskId: input.taskId ?? null,
-        taskTitle: input.taskTitle ?? null,
+        tasks: input.tasks,
+        taskId: input.taskId,
+        taskTitle: input.taskTitle,
         label: input.label?.trim() || input.taskTitle || 'Bloco de foco',
         type: input.type ?? 'focus',
+        color: input.color,
       });
-      persist([...blocks, block].sort((a, b) => a.startMin - b.startMin));
+      persist([...blocks, block]);
       setSelectedId(block.id);
       return block;
     },
@@ -89,7 +111,7 @@ export function useTimeBlocks(date?: string) {
   const updateBlock = useCallback(
     (
       blockId: string,
-      patch: Partial<Pick<PlannedTimeBlock, 'startMin' | 'endMin' | 'label' | 'type' | 'taskId' | 'taskTitle'>>,
+      patch: Partial<Pick<PlannedTimeBlock, 'startMin' | 'endMin' | 'label' | 'type' | 'tasks' | 'color'>>,
     ) => {
       const next = updateBlockLib(day, blockId, patch);
       if (!next) return false;
@@ -152,6 +174,8 @@ export function useTimeBlocks(date?: string) {
 
   const dayProgress = totalPlannedMin > 0 ? Math.round((totalFilledMin / totalPlannedMin) * 100) : 0;
 
+  const canPan = visibleSpanHours < 24;
+
   return {
     day,
     blocks,
@@ -161,6 +185,12 @@ export function useTimeBlocks(date?: string) {
     dayProgress,
     totalPlannedMin,
     totalFilledMin,
+    visibleSpanHours,
+    visibleSpanMin,
+    viewStartMin,
+    canPan,
+    setVisibleSpanHours,
+    setViewStartMin: setViewStart,
     setSelectedId,
     addBlock,
     removeBlock,

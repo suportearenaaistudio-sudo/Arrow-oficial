@@ -7,8 +7,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import type { PlannedTimeBlock } from '@/types/time-blocks';
-import { TIME_BLOCK_META } from '@/types/time-blocks';
-import { blockFillPercent, minToTimeStr } from '@/lib/time-blocks';
+import { blockBarColors, blockFillPercent, minToTimeStr, normalizeBlock, resolveBlockColor } from '@/lib/time-blocks';
 
 interface TimeBlockPlanListProps {
   blocks: PlannedTimeBlock[];
@@ -46,7 +45,8 @@ export default function TimeBlockPlanList({
         Plano do dia
       </h3>
       {blocks.map((block) => {
-        const meta = TIME_BLOCK_META[block.type];
+        const blockColor = resolveBlockColor(block);
+        const { track } = blockBarColors(blockColor);
         const isSelected = selectedId === block.id || activeBlockId === block.id;
         const extra = activeBlockId === block.id ? liveFillMin : 0;
         const fill = blockFillPercent(block, extra);
@@ -61,14 +61,14 @@ export default function TimeBlockPlanList({
             className="relative flex items-stretch rounded-xl overflow-hidden cursor-pointer transition-all hover:brightness-[1.02]"
             style={{
               background: 'var(--arrow-bg-elevated)',
-              border: `1px solid ${isSelected ? meta.color : 'var(--arrow-border)'}`,
-              boxShadow: isSelected ? `0 0 0 1px ${meta.color}33` : 'none',
+              border: `1px solid ${isSelected ? blockColor : 'var(--arrow-border)'}`,
+              boxShadow: isSelected ? `0 0 0 1px ${blockColor}33` : 'none',
             }}
           >
             <div className="flex items-center gap-3 flex-1 p-3 min-w-0">
               <span
                 className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                style={{ background: meta.bg, color: meta.color }}
+                style={{ background: track, color: blockColor }}
               >
                 {blockInitial(block)}
               </span>
@@ -79,31 +79,36 @@ export default function TimeBlockPlanList({
                 <p className="text-[10px] tabular-nums" style={{ color: 'var(--arrow-text-muted)' }}>
                   {minToTimeStr(block.startMin)} – {minToTimeStr(block.endMin)}
                 </p>
-                {block.taskId && (
-                  <Link
-                    to="/tasks"
-                    onClick={(e) => e.stopPropagation()}
-                    className="text-[10px] font-medium hover:underline"
-                    style={{ color: meta.color }}
-                  >
-                    {block.taskTitle || 'Ver tarefa'} →
-                  </Link>
+                {normalizeBlock(block).tasks.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {normalizeBlock(block).tasks.map((t) => (
+                      <Link
+                        key={t.id}
+                        to="/tasks"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-[9px] font-medium px-1.5 py-0.5 rounded-md hover:underline"
+                        style={{ background: `${blockColor}18`, color: blockColor }}
+                      >
+                        {t.title || 'Tarefa'}
+                      </Link>
+                    ))}
+                  </div>
                 )}
               </div>
-              <span className="text-sm font-bold tabular-nums flex-shrink-0" style={{ color: meta.color }}>
+              <span className="text-sm font-bold tabular-nums flex-shrink-0" style={{ color: blockColor }}>
                 {fill}%
               </span>
             </div>
 
             <div
               className="w-1 flex-shrink-0"
-              style={{ background: meta.color }}
+              style={{ background: blockColor }}
             />
 
             <div className="absolute bottom-0 left-12 right-4 h-0.5 rounded-full overflow-hidden" style={{ background: 'rgba(128,128,128,0.12)' }}>
               <div
                 className="h-full rounded-full transition-all duration-500"
-                style={{ width: `${fill}%`, background: meta.color }}
+                style={{ width: `${fill}%`, background: blockColor }}
               />
             </div>
 

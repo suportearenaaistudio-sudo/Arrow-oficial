@@ -140,6 +140,15 @@ export const desktopAPI = {
           invoke('db_media_items_move', { id, status, rank: rank ?? null }),
       },
     },
+    releaseSchedules: {
+      list: (mediaType?: string) =>
+        invoke('db_release_schedules_list', { mediaType: mediaType ?? null }),
+      create: (data: unknown) => invoke('db_release_schedules_create', { data }),
+      update: (data: unknown) => invoke('db_release_schedules_update', { data }),
+      delete: (id: string, deleteLinkedTask?: boolean) =>
+        invoke('db_release_schedules_delete', { id, deleteLinkedTask: deleteLinkedTask ?? null }),
+      markReleased: (id: string) => invoke('db_release_schedules_mark_released', { id }),
+    },
   },
   notes: {
     list: () => invoke('notes_list'),

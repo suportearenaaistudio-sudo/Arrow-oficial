@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { useFocusTimer } from '@/contexts/FocusTimerContext';
 import { useTimeBlocks } from '@/hooks/useTimeBlocks';
 import { suggestNextFreeSlot } from '@/lib/time-blocks';
+import { MAX_VISIBLE_HOURS, MIN_VISIBLE_HOURS } from '@/types/time-blocks';
 import TimeBlockGantt from '@/components/time-blocks/TimeBlockGantt';
 import TimeBlockPlanList from '@/components/time-blocks/TimeBlockPlanList';
 import TimeBlockEfficiency from '@/components/time-blocks/TimeBlockEfficiency';
@@ -32,6 +33,12 @@ export default function TimeBlockSection({ compact }: TimeBlockSectionProps) {
     selectedId,
     selectedBlock,
     dayProgress,
+    visibleSpanHours,
+    visibleSpanMin,
+    viewStartMin,
+    canPan,
+    setVisibleSpanHours,
+    setViewStartMin,
     setSelectedId,
     addBlock,
     removeBlock,
@@ -53,7 +60,8 @@ export default function TimeBlockSection({ compact }: TimeBlockSectionProps) {
     setSelectedId(id);
     setActiveBlockId(id);
     const block = blocks.find((b) => b.id === id);
-    if (block?.taskId) setTask(block.taskId, block.taskTitle);
+    const firstTask = block?.tasks?.[0];
+    if (firstTask) setTask(firstTask.id, firstTask.title);
   }
 
   function handleSuggestFromTask() {
@@ -65,8 +73,7 @@ export default function TimeBlockSection({ compact }: TimeBlockSectionProps) {
     const block = addBlock({
       startMin: slot.startMin,
       endMin: slot.endMin,
-      taskId,
-      taskTitle,
+      tasks: taskId ? [{ id: taskId, title: taskTitle || '' }] : [],
       label: taskTitle || 'Bloco de foco',
       type: 'focus',
     });
@@ -78,42 +85,54 @@ export default function TimeBlockSection({ compact }: TimeBlockSectionProps) {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-sm font-semibold" style={{ color: 'var(--arrow-text-primary)' }}>
             Time Blocks
           </h2>
           {!compact && (
             <p className="text-[11px] mt-0.5" style={{ color: 'var(--arrow-text-muted)' }}>
-              Timeline do dia — preenche com sessões de foco
+              Timeline única 06:00 → 06:00
             </p>
           )}
         </div>
-        <span className="text-xs font-bold tabular-nums" style={{ color: 'var(--arrow-accent)' }}>
-          {dayProgress}%
-        </span>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2 min-w-[140px]">
+            <span className="text-[10px] font-medium shrink-0" style={{ color: 'var(--arrow-text-muted)' }}>
+              Escala
+            </span>
+            <input
+              type="range"
+              min={MIN_VISIBLE_HOURS}
+              max={MAX_VISIBLE_HOURS}
+              step={1}
+              value={visibleSpanHours}
+              onChange={(e) => setVisibleSpanHours(Number(e.target.value))}
+              className="flex-1 min-w-[80px]"
+              aria-label="Escala da timeline em horas"
+            />
+            <span className="text-[10px] font-bold tabular-nums w-7 shrink-0" style={{ color: 'var(--arrow-accent)' }}>
+              {visibleSpanHours}h
+            </span>
+          </div>
+          <span className="text-xs font-bold tabular-nums" style={{ color: 'var(--arrow-accent)' }}>
+            {dayProgress}%
+          </span>
+        </div>
       </div>
 
-      <div className="space-y-4">
-        <TimeBlockGantt
-          blocks={blocks}
-          selectedId={effectiveSelected}
-          activeBlockId={activeBlockId}
-          liveFillMin={liveFillMin}
-          onSelect={handleSelect}
-          period="day"
-          compact={compact}
-        />
-        <TimeBlockGantt
-          blocks={blocks}
-          selectedId={effectiveSelected}
-          activeBlockId={activeBlockId}
-          liveFillMin={liveFillMin}
-          onSelect={handleSelect}
-          period="night"
-          compact={compact}
-        />
-      </div>
+      <TimeBlockGantt
+        blocks={blocks}
+        selectedId={effectiveSelected}
+        activeBlockId={activeBlockId}
+        liveFillMin={liveFillMin}
+        onSelect={handleSelect}
+        visibleSpanMin={visibleSpanMin}
+        viewStartMin={viewStartMin}
+        onViewStartChange={canPan ? setViewStartMin : undefined}
+        canPan={canPan}
+        compact={compact}
+      />
 
       <div className="flex items-center gap-2 flex-wrap">
         <TimeBlockForm
@@ -154,7 +173,7 @@ export default function TimeBlockSection({ compact }: TimeBlockSectionProps) {
             onDuplicate={(id) => {
               const copy = duplicateBlock(id);
               if (copy) toast.success('Bloco duplicado');
-              else toast.error('Não foi possível duplicar — conflito de horário');
+              else toast.error('Não foi possível duplicar');
             }}
             onMarkComplete={(id) => {
               markComplete(id);
