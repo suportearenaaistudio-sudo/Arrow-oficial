@@ -26,18 +26,41 @@ export default function NoteSourceEditor({
       autocompletion({
         override: [
           (context: CompletionContext) => {
-            const before = context.matchBefore(/\[\[[^\]]*/);
-            if (!before) return null;
-            const query = before.text.slice(2).toLowerCase();
-            const options = notes
-              .filter((n) => n.title.toLowerCase().includes(query))
-              .slice(0, 12)
-              .map((n) => ({
-                label: n.title,
-                type: 'text' as const,
-                apply: `${n.title}]]`,
-              }));
-            return { from: before.from + 2, options, validFor: /^[^\]]*$/ };
+            const wikilink = context.matchBefore(/\[\[[^\]]*/);
+            if (wikilink) {
+              const query = wikilink.text.slice(2).toLowerCase();
+              const options = notes
+                .filter((n) => n.title.toLowerCase().includes(query))
+                .slice(0, 12)
+                .map((n) => ({
+                  label: n.title,
+                  type: 'text' as const,
+                  apply: `${n.title}]]`,
+                }));
+              return { from: wikilink.from + 2, options, validFor: /^[^\]]*$/ };
+            }
+
+            const slash = context.matchBefore(/(?:^|[^\[])\/[^\s\[]*/);
+            if (slash) {
+              const slashIdx = slash.text.lastIndexOf('/');
+              const query = slash.text.slice(slashIdx + 1).toLowerCase();
+              const from = slash.from + slashIdx + 1;
+              const options = notes
+                .filter((n) => n.title.toLowerCase().includes(query))
+                .slice(0, 12)
+                .map((n) => ({
+                  label: n.title,
+                  type: 'text' as const,
+                  apply: (view: EditorView, _c: unknown, fromPos: number, toPos: number) => {
+                    view.dispatch({
+                      changes: { from: fromPos - 1, to: toPos, insert: `[[${n.title}]]` },
+                    });
+                  },
+                }));
+              return { from, options, validFor: /^[^\s\[]*$/ };
+            }
+
+            return null;
           },
         ],
       }),

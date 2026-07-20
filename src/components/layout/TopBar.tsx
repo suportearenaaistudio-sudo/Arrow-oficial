@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useVault } from '@/contexts/VaultContext';
 import { useSidebar } from '@/contexts/SidebarContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -13,6 +13,8 @@ import FocusTimerPill from '@/components/layout/FocusTimerPill';
 import ThemeToggle from '@/components/layout/ThemeToggle';
 import WindowControls from '@/components/layout/WindowControls';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import NotesTopBarControls from '@/components/notes/NotesTopBarControls';
+import { useNotesChrome } from '@/contexts/NotesChromeContext';
 
 const quickActions = [
   { label: 'Nova Tarefa', icon: ListChecks, path: '/tasks' },
@@ -22,16 +24,21 @@ const quickActions = [
 
 export default function TopBar({ visible = true }: { visible?: boolean }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { profile, closeVault, vaultPath } = useVault();
   const { collapsed, toggle } = useSidebar();
   const { theme, isDark } = useTheme();
   const { isDesktopApp, isWindowsApp, topBarTotalHeight, topBarPaddingTop, trafficLightInset } = usePlatformChrome(collapsed);
+  const notesChrome = useNotesChrome();
   const [profileOpen, setProfileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const isNotesRoute = location.pathname.startsWith('/notes');
+  const showNotesControls = isNotesRoute && notesChrome.active;
 
   const initials = (profile?.full_name || 'U').slice(0, 2).toUpperCase();
 
@@ -50,8 +57,8 @@ export default function TopBar({ visible = true }: { visible?: boolean }) {
 
   useEffect(() => {
     if (searchOpen) {
-      const t = setTimeout(() => searchInputRef.current?.focus(), 120);
-      return () => clearTimeout(t);
+      const timeout = setTimeout(() => searchInputRef.current?.focus(), 120);
+      return () => clearTimeout(timeout);
     }
   }, [searchOpen]);
 
@@ -110,9 +117,11 @@ export default function TopBar({ visible = true }: { visible?: boolean }) {
       </div>
 
       <div
-        className="flex-1 min-w-0"
+        className="flex-1 min-w-0 flex items-center justify-center px-2"
         data-tauri-drag-region={isDesktopApp ? true : undefined}
-      />
+      >
+        {showNotesControls && <NotesTopBarControls />}
+      </div>
 
       <div className="flex items-center gap-1.5 flex-shrink-0">
         <Tooltip delayDuration={200}>
@@ -161,7 +170,7 @@ export default function TopBar({ visible = true }: { visible?: boolean }) {
                     ref={searchInputRef}
                     type="text"
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(event) => setSearchQuery(event.target.value)}
                     placeholder="Buscar..."
                     className="w-full pl-8 pr-8 h-8 rounded-full text-[12px] outline-none"
                     style={{
@@ -169,16 +178,19 @@ export default function TopBar({ visible = true }: { visible?: boolean }) {
                       border: `1px solid ${theme.border}`,
                       color: theme.textPrimary,
                     }}
-                    onFocus={(e) => {
-                      e.currentTarget.style.borderColor = `${theme.accent}50`;
+                    onFocus={(event) => {
+                      event.currentTarget.style.borderColor = `${theme.accent}50`;
                     }}
-                    onBlur={(e) => {
-                      e.currentTarget.style.borderColor = theme.border;
+                    onBlur={(event) => {
+                      event.currentTarget.style.borderColor = theme.border;
                     }}
                   />
                   <button
                     type="button"
-                    onClick={() => { setSearchOpen(false); setSearchQuery(''); }}
+                    onClick={() => {
+                      setSearchOpen(false);
+                      setSearchQuery('');
+                    }}
                     className="absolute right-1.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center"
                     style={{ color: theme.textMuted }}
                   >
@@ -196,8 +208,8 @@ export default function TopBar({ visible = true }: { visible?: boolean }) {
               className="w-8 h-8 rounded-full flex items-center justify-center transition-colors duration-150"
               style={{ color: theme.textSecondary }}
               title="Buscar"
-              onMouseEnter={(e) => (e.currentTarget.style.background = controlHover)}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              onMouseEnter={(event) => (event.currentTarget.style.background = controlHover)}
+              onMouseLeave={(event) => (event.currentTarget.style.background = 'transparent')}
             >
               <Search className="w-[17px] h-[17px]" strokeWidth={1.5} />
             </button>
@@ -207,8 +219,9 @@ export default function TopBar({ visible = true }: { visible?: boolean }) {
         <button
           className="relative w-8 h-8 rounded-md flex items-center justify-center transition-colors duration-150 flex-shrink-0"
           style={{ color: theme.textSecondary }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = controlHover)}
-          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          onMouseEnter={(event) => (event.currentTarget.style.background = controlHover)}
+          onMouseLeave={(event) => (event.currentTarget.style.background = 'transparent')}
+          aria-label="Notificações"
         >
           <Bell className="w-[17px] h-[17px]" strokeWidth={1.5} />
           <span

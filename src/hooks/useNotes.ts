@@ -18,6 +18,7 @@ export function useNotes() {
 
   const invalidateAll = () => {
     queryClient.invalidateQueries({ queryKey: ['notes'] });
+    queryClient.invalidateQueries({ queryKey: ['note-folders'] });
     queryClient.invalidateQueries({ queryKey: ['note-backlinks'] });
     queryClient.invalidateQueries({ queryKey: ['note-graph'] });
   };
@@ -64,6 +65,17 @@ export function useNotes() {
     onSuccess: () => invalidateAll(),
   });
 
+  const createFolder = useMutation({
+    mutationFn: async (path: string) => {
+      return desktopAPI.notes.createFolder(path) as Promise<{ success: boolean; path: string }>;
+    },
+    onSuccess: () => {
+      invalidateAll();
+      showSuccess('Pasta criada!');
+    },
+    onError: () => showError('Erro ao criar pasta'),
+  });
+
   return {
     notes: query.data || [],
     isLoading: query.isLoading,
@@ -72,7 +84,18 @@ export function useNotes() {
     deleteNote,
     resolveOrCreate,
     rebuildIndex,
+    createFolder,
   };
+}
+
+export function useNoteFolders() {
+  const { profile } = useVault();
+  return useQuery({
+    queryKey: ['note-folders', profile?.id],
+    queryFn: () => desktopAPI.notes.listFolders(),
+    enabled: !!profile,
+    retry: false,
+  });
 }
 
 export function useNote(noteId: string | null) {

@@ -1,5 +1,5 @@
 import { useTheme } from '@/contexts/ThemeContext';
-import type { SaveStatus } from '@/components/notes/NoteToolbar';
+export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 interface NoteStatusBarProps {
   backlinkCount: number;
@@ -39,9 +39,11 @@ export default function NoteStatusBar({
 
   return (
     <div
-      className="flex items-center justify-end gap-3 px-4 py-1.5 border-t text-[10px] shrink-0 tabular-nums"
+      className="flex items-center justify-between gap-3 px-4 py-1.5 border-t text-[10px] shrink-0 tabular-nums"
       style={{ borderColor: theme.border, color: theme.textMuted }}
     >
+      <span className="opacity-70">Digite / para linkar uma nota</span>
+      <div className="flex items-center gap-3">
       <button
         type="button"
         onClick={onBacklinksClick}
@@ -57,6 +59,7 @@ export default function NoteStatusBar({
           {saveLabel}
         </span>
       )}
+      </div>
     </div>
   );
 }

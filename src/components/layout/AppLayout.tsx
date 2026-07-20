@@ -10,6 +10,7 @@ import AppSidebar, { SIDEBAR_WIDTH } from './AppSidebar';
 import { useRef } from 'react';
 import { useHideOnScroll } from '@/hooks/useHideOnScroll';
 import { SIDEBAR_TRANSITION } from '@/hooks/usePlatformChrome';
+import { NotesChromeProvider } from '@/contexts/NotesChromeContext';
 import { isDesktop } from '@/lib/platform';
 
 function LayoutInner() {
@@ -100,7 +101,9 @@ function LayoutInner() {
 export default function AppLayout() {
   return (
     <SidebarProvider>
-      <LayoutInner />
+      <NotesChromeProvider>
+        <LayoutInner />
+      </NotesChromeProvider>
     </SidebarProvider>
   );
 }

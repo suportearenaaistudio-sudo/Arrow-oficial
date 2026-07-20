@@ -130,6 +130,8 @@ pub fn run() {
             commands::notes_backlinks,
             commands::notes_graph,
             commands::notes_rebuild_index,
+            commands::notes_list_folders,
+            commands::notes_create_folder,
             commands::notes_create,
             commands::notes_update,
             commands::notes_delete,

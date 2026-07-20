@@ -351,6 +351,62 @@ impl<'a> NotesStore<'a> {
         Ok(matches)
     }
 
+    fn validate_folder_path(path: &str) -> Result<String, String> {
+        let trimmed = path.trim().trim_matches('/');
+        if trimmed.is_empty() {
+            return Err("Nome da pasta é obrigatório".to_string());
+        }
+        if trimmed.contains("..") {
+            return Err("Caminho de pasta inválido".to_string());
+        }
+        for part in trimmed.split('/') {
+            if part.is_empty() || part == "." {
+                return Err("Caminho de pasta inválido".to_string());
+            }
+            if part.chars().any(|c| c == '\\' || c == ':' || c == '*' || c == '?' || c == '"') {
+                return Err("Caracteres inválidos no nome da pasta".to_string());
+            }
+        }
+        Ok(trimmed.to_string())
+    }
+
+    fn walk_dirs(dir: &Path, base: &Path, out: &mut Vec<String>) {
+        if !dir.exists() {
+            return;
+        }
+        let entries = fs::read_dir(dir).ok();
+        if let Some(entries) = entries {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    if let Ok(rel) = path.strip_prefix(base) {
+                        let rel_str = rel.to_string_lossy().replace('\\', "/");
+                        if !rel_str.is_empty() {
+                            out.push(rel_str);
+                        }
+                    }
+                    Self::walk_dirs(&path, base, out);
+                }
+            }
+        }
+    }
+
+    pub fn list_folders(&self) -> Result<Vec<String>, String> {
+        let base = notes_dir(self.vault_path);
+        let mut folders = Vec::new();
+        Self::walk_dirs(&base, &base, &mut folders);
+        folders.sort();
+        folders.dedup();
+        Ok(folders)
+    }
+
+    pub fn create_folder(&self, path: &str) -> Result<String, String> {
+        let rel = Self::validate_folder_path(path)?;
+        let dir = notes_dir(self.vault_path).join(&rel);
+        fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        Ok(rel)
+    }
+
     pub fn create_stub(&self, title: &str, folder: Option<&str>) -> Result<NoteFileMeta, String> {
         let trimmed = title.trim();
         if trimmed.is_empty() {

@@ -1,12 +1,11 @@
 import { useMemo, useState } from 'react';
-import {
-  ChevronLeft, ChevronRight, FileText, Folder, FolderPlus, Plus, Search,
-} from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileText, Folder, Search } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import type { Note } from '@/types/arrow';
 
 interface NoteFileExplorerProps {
   notes: Note[];
+  emptyFolders?: string[];
   selectedId: string | null;
   search: string;
   onSearchChange: (v: string) => void;
@@ -15,8 +14,6 @@ interface NoteFileExplorerProps {
   onFolderSelect: (folder: string | null) => void;
   onNoteDragStart?: (e: React.DragEvent, note: Note) => void;
   onFolderDrop?: (e: React.DragEvent, folder: string | null) => void;
-  onNewNote: () => void;
-  onNewFolder: () => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
 }
@@ -28,7 +25,7 @@ interface FolderNode {
   notes: Note[];
 }
 
-function buildTree(notes: Note[]): { roots: Note[]; folders: FolderNode[] } {
+function buildTree(notes: Note[], emptyFolders: string[] = []): { roots: Note[]; folders: FolderNode[] } {
   const folderMap = new Map<string, FolderNode>();
   const roots: Note[] = [];
 
@@ -43,6 +40,10 @@ function buildTree(notes: Note[]): { roots: Note[]; folders: FolderNode[] } {
       }
     }
     return folderMap.get(path)!;
+  }
+
+  for (const folderPath of emptyFolders) {
+    if (folderPath.trim()) ensureFolder(folderPath.trim());
   }
 
   for (const note of notes) {
@@ -177,6 +178,7 @@ function NoteRow({
 
 export default function NoteFileExplorer({
   notes,
+  emptyFolders = [],
   selectedId,
   search,
   onSearchChange,
@@ -185,8 +187,6 @@ export default function NoteFileExplorer({
   onFolderSelect,
   onNoteDragStart,
   onFolderDrop,
-  onNewNote,
-  onNewFolder,
   collapsed,
   onToggleCollapse,
 }: NoteFileExplorerProps) {
@@ -200,7 +200,10 @@ export default function NoteFileExplorer({
     return notes.filter((n) => n.title.toLowerCase().includes(q));
   }, [notes, search]);
 
-  const { roots, folders } = useMemo(() => buildTree(filtered), [filtered]);
+  const { roots, folders } = useMemo(
+    () => buildTree(filtered, search ? [] : emptyFolders),
+    [filtered, emptyFolders, search],
+  );
   const showTree = !search;
 
   function toggleFolder(path: string) {
@@ -237,12 +240,6 @@ export default function NoteFileExplorer({
       style={{ borderColor: theme.border }}
     >
       <div className="flex items-center gap-0.5 px-2 py-2 border-b" style={{ borderColor: theme.border }}>
-        <button type="button" onClick={onNewNote} className="p-1.5 rounded-lg" style={{ color: theme.textMuted }} title="Nova nota">
-          <Plus className="w-4 h-4" />
-        </button>
-        <button type="button" onClick={onNewFolder} className="p-1.5 rounded-lg" style={{ color: theme.textMuted }} title="Nova pasta">
-          <FolderPlus className="w-4 h-4" />
-        </button>
         <button
           type="button"
           onClick={() => setSearchOpen((v) => !v)}
@@ -322,7 +319,7 @@ export default function NoteFileExplorer({
             />
           ))
         )}
-        {filtered.length === 0 && (
+        {filtered.length === 0 && folders.length === 0 && (
           <p className="text-xs text-center py-6 px-2" style={{ color: theme.textMuted }}>
             Nenhuma nota
           </p>

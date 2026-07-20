@@ -3,19 +3,20 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { Edit3, Plus, FolderPlus, Search, BookOpen, Share2 } from 'lucide-react';
 import { usePageContextMenu } from '@/contexts/DesktopContextMenuContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useNotes, useNoteBacklinks } from '@/hooks/useNotes';
+import { useNotes, useNoteBacklinks, useNoteFolders } from '@/hooks/useNotes';
 import { useNoteNavigation } from '@/hooks/useNoteNavigation';
 import { useNoteNavigationHistory } from '@/hooks/useNoteNavigationHistory';
+import { useNotesChrome } from '@/contexts/NotesChromeContext';
 import NotesImmersiveShell from '@/components/notes/NotesImmersiveShell';
 import NoteFileExplorer from '@/components/notes/NoteFileExplorer';
 import NoteEditorPane from '@/components/notes/NoteEditorPane';
 import NoteBacklinksPanel from '@/components/notes/NoteBacklinksPanel';
 import NoteGraphView from '@/components/notes/NoteGraphView';
-import NoteToolbar, { type SaveStatus } from '@/components/notes/NoteToolbar';
 import NoteTabBar from '@/components/notes/NoteTabBar';
 import NoteNavBar from '@/components/notes/NoteNavBar';
-import NoteStatusBar, { noteStats } from '@/components/notes/NoteStatusBar';
+import NoteStatusBar, { noteStats, type SaveStatus } from '@/components/notes/NoteStatusBar';
 import NoteQuickSwitcher from '@/components/notes/NoteQuickSwitcher';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { Note } from '@/types/arrow';
 
 const REBUILD_KEY = 'arrow-notes-index-rebuilt';
@@ -40,8 +41,10 @@ export default function NotesWorkspace() {
   const location = useLocation();
   const { noteId: routeNoteId } = useParams<{ noteId?: string }>();
   const isGraphRoute = location.pathname.endsWith('/graph');
+  const { register, reset } = useNotesChrome();
 
-  const { notes, isLoading, createNote, updateNote, deleteNote, rebuildIndex } = useNotes();
+  const { notes, isLoading, createNote, updateNote, deleteNote, rebuildIndex, createFolder } = useNotes();
+  const { data: emptyFolders = [] } = useNoteFolders();
   const { followWikilink } = useNoteNavigation();
   const { push: pushHistory, goBack, goForward, canGoBack, canGoForward } = useNoteNavigationHistory();
 
@@ -54,6 +57,8 @@ export default function NotesWorkspace() {
   const [editContent, setEditContent] = useState('');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [quickOpen, setQuickOpen] = useState(false);
+  const [folderOpen, setFolderOpen] = useState(false);
+  const [folderName, setFolderName] = useState('');
   const [openTabs, setOpenTabs] = useState<string[]>(loadTabs);
   const [readingMode, setReadingMode] = useState(false);
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
@@ -66,6 +71,70 @@ export default function NotesWorkspace() {
   const { data: backlinksData } = useNoteBacklinks(selectedNote?.id ?? null);
   const backlinkCount = backlinksData?.backlinks?.length ?? 0;
   const stats = noteStats(editContent, editTitle);
+
+  const handleSelectNote = useCallback((note: Note, options?: { focusTitle?: boolean }) => {
+    setSelectedNote(note);
+    setEditTitle(note.title);
+    setEditContent(note.content || '');
+    dirtyRef.current = false;
+    setReadingMode(false);
+    setOpenTabs((prev) => (prev.includes(note.id) ? prev : [...prev, note.id]));
+    pushHistory(note.id);
+    if (options?.focusTitle) setFocusTitle(true);
+    navigate(`/notes/${note.id}`);
+  }, [navigate, pushHistory]);
+
+  const handleInstantNewNote = useCallback(() => {
+    const folder = pendingFolder || selectedFolder || undefined;
+    createNote.mutate(
+      { title: 'Sem título', content: '', tags: [], folder },
+      {
+        onSuccess: (note) => {
+          setPendingFolder(null);
+          handleSelectNote(note, { focusTitle: true });
+        },
+      },
+    );
+  }, [createNote, pendingFolder, selectedFolder, handleSelectNote]);
+
+  const handleNewFolder = useCallback(() => {
+    setFolderName('');
+    setFolderOpen(true);
+  }, []);
+
+  const handleOpenGraph = useCallback(() => {
+    navigate('/notes/graph');
+  }, [navigate]);
+
+  const handleOpenEditor = useCallback(() => {
+    navigate(selectedNote ? `/notes/${selectedNote.id}` : '/notes');
+  }, [navigate, selectedNote]);
+
+  const handleQuickSwitcher = useCallback(() => {
+    setQuickOpen(true);
+  }, []);
+
+  useEffect(() => {
+    register({
+      active: true,
+      mode: isGraphRoute ? 'graph' : 'editor',
+      onNewNote: handleInstantNewNote,
+      onNewFolder: handleNewFolder,
+      onOpenGraph: handleOpenGraph,
+      onOpenEditor: handleOpenEditor,
+      onQuickSwitcher: handleQuickSwitcher,
+    });
+    return () => reset();
+  }, [
+    register,
+    reset,
+    isGraphRoute,
+    handleInstantNewNote,
+    handleNewFolder,
+    handleOpenGraph,
+    handleOpenEditor,
+    handleQuickSwitcher,
+  ]);
 
   useEffect(() => {
     if (!localStorage.getItem(REBUILD_KEY)) {
@@ -141,37 +210,18 @@ export default function NotesWorkspace() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const handleSelectNote = useCallback((note: Note, options?: { focusTitle?: boolean }) => {
-    setSelectedNote(note);
-    setEditTitle(note.title);
-    setEditContent(note.content || '');
-    dirtyRef.current = false;
-    setReadingMode(false);
-    setOpenTabs((prev) => (prev.includes(note.id) ? prev : [...prev, note.id]));
-    pushHistory(note.id);
-    if (options?.focusTitle) setFocusTitle(true);
-    navigate(`/notes/${note.id}`);
-  }, [navigate, pushHistory]);
-
-  function handleInstantNewNote() {
-    const folder = pendingFolder || selectedFolder || undefined;
-    createNote.mutate(
-      { title: 'Sem título', content: '', tags: [], folder },
-      {
-        onSuccess: (note) => {
-          setPendingFolder(null);
-          handleSelectNote(note, { focusTitle: true });
-        },
+  function submitNewFolder(e: React.FormEvent) {
+    e.preventDefault();
+    const name = folderName.trim();
+    if (!name) return;
+    const path = selectedFolder ? `${selectedFolder}/${name}` : name;
+    createFolder.mutate(path, {
+      onSuccess: (res) => {
+        setSelectedFolder(res.path);
+        setFolderOpen(false);
+        setFolderName('');
       },
-    );
-  }
-
-  function handleNewFolder() {
-    const name = window.prompt('Nome da pasta:');
-    if (name?.trim()) {
-      setPendingFolder(name.trim());
-      setSelectedFolder(name.trim());
-    }
+    });
   }
 
   usePageContextMenu(
@@ -258,14 +308,6 @@ export default function NotesWorkspace() {
 
   return (
     <NotesImmersiveShell>
-      <NoteToolbar
-        mode={isGraphRoute ? 'graph' : 'editor'}
-        onNewNote={handleInstantNewNote}
-        onOpenGraph={() => navigate('/notes/graph')}
-        onOpenEditor={() => navigate(selectedNote ? `/notes/${selectedNote.id}` : '/notes')}
-        onQuickSwitcher={() => setQuickOpen(true)}
-      />
-
       {!isGraphRoute && (
         <NoteTabBar
           tabs={openTabs}
@@ -300,6 +342,7 @@ export default function NotesWorkspace() {
         {!isGraphRoute && (
           <NoteFileExplorer
             notes={notes}
+            emptyFolders={emptyFolders}
             selectedId={selectedNote?.id ?? null}
             search={search}
             onSearchChange={setSearch}
@@ -308,8 +351,6 @@ export default function NotesWorkspace() {
             onFolderSelect={setSelectedFolder}
             onNoteDragStart={handleDragStart}
             onFolderDrop={handleFolderDrop}
-            onNewNote={handleInstantNewNote}
-            onNewFolder={handleNewFolder}
             collapsed={explorerCollapsed}
             onToggleCollapse={() => setExplorerCollapsed((v) => !v)}
           />
@@ -343,6 +384,9 @@ export default function NotesWorkspace() {
             <div className="flex-1 flex flex-col items-center justify-center">
               <Edit3 className="w-10 h-10 mb-3" style={{ color: theme.textMuted }} />
               <p style={{ color: theme.textMuted }}>Selecione ou crie uma nota</p>
+              <p className="text-xs mt-1" style={{ color: theme.textMuted }}>
+                Use /nome da nota para linkar · ⌘O para buscar
+              </p>
               <button
                 type="button"
                 onClick={handleInstantNewNote}
@@ -387,6 +431,37 @@ export default function NotesWorkspace() {
           if (note) handleSelectNote(note);
         }}
       />
+
+      <Dialog open={folderOpen} onOpenChange={setFolderOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nova pasta</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={submitNewFolder} className="space-y-4 mt-2">
+            {selectedFolder && (
+              <p className="text-xs" style={{ color: theme.textMuted }}>
+                Dentro de: {selectedFolder}
+              </p>
+            )}
+            <input
+              required
+              autoFocus
+              value={folderName}
+              onChange={(e) => setFolderName(e.target.value)}
+              placeholder="Nome da pasta"
+              className="w-full px-4 py-2.5 rounded-xl border text-sm"
+            />
+            <button
+              type="submit"
+              className="w-full arrow-btn-primary"
+              style={{ color: theme.accentForeground }}
+              disabled={createFolder.isPending}
+            >
+              Criar pasta
+            </button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </NotesImmersiveShell>
   );
 }

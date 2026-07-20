@@ -162,6 +162,8 @@ export const desktopAPI = {
     graph: (focusNoteId?: string, tag?: string) =>
       invoke('notes_graph', { focusNoteId: focusNoteId ?? null, tag: tag ?? null }),
     rebuildIndex: () => invoke('notes_rebuild_index'),
+    listFolders: () => invoke('notes_list_folders') as Promise<string[]>,
+    createFolder: (path: string) => invoke('notes_create_folder', { path }),
     create: (data: unknown) => invoke('notes_create', { data }),
     update: (data: unknown) => invoke('notes_update', { data }),
     delete: (id: string) => invoke('notes_delete', { id }),

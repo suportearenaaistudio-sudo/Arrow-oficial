@@ -1013,6 +1013,23 @@ pub fn notes_rebuild_index(state: State<'_, AppData>) -> Result<Value, String> {
 }
 
 #[tauri::command]
+pub fn notes_list_folders(state: State<'_, AppData>) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let (user_id, path) = notes_vault_context(&vault)?;
+    let store = NotesStore::new(&path, &user_id);
+    Ok(json!(store.list_folders()?))
+}
+
+#[tauri::command]
+pub fn notes_create_folder(state: State<'_, AppData>, path: String) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let (user_id, vault_path) = notes_vault_context(&vault)?;
+    let store = NotesStore::new(&vault_path, &user_id);
+    let created = store.create_folder(&path)?;
+    Ok(json!({ "success": true, "path": created }))
+}
+
+#[tauri::command]
 pub fn notes_create(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     let (user_id, path) = notes_vault_context(&vault)?;
