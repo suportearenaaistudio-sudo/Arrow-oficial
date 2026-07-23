@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Repeat, Plus, Edit2, Trash2, Flame, Trophy, CheckCircle2 } from 'lucide-react';
+import { usePageContextMenu } from '@/contexts/DesktopContextMenuContext';
 import { useHabits } from '@/hooks/useHabits';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -37,6 +38,22 @@ export default function Habits() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const last7 = getLast7Days();
   const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+  usePageContextMenu(
+    () => [
+      {
+        id: 'new-habit',
+        label: 'Novo hábito',
+        icon: Plus,
+        onClick: () => {
+          setEditingHabit(null);
+          setForm(emptyForm);
+          setFormOpen(true);
+        },
+      },
+    ],
+    [],
+  );
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

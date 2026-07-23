@@ -6,13 +6,10 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::db::ArrowDatabase;
-use crate::paths::{
-    arrow_dir, attachments_dir, config_path, db_path, notes_dir, profile_path,
-};
+use crate::paths::{arrow_dir, attachments_dir, config_path, db_path, notes_dir, profile_path};
 use crate::types::{LocalProfile, VaultConfig, VAULT_VERSION};
 
-const VAULT_V1_ERROR: &str =
-    "Vault incompatível (v1/Electron). Crie um novo vault no Arrow 2.";
+const VAULT_V1_ERROR: &str = "Vault incompatível (v1/Electron). Crie um novo vault no Arrow 2.";
 
 fn now_iso() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
@@ -63,7 +60,9 @@ impl VaultManager {
     pub fn get_status(&self) -> (bool, Option<String>, Option<LocalProfile>) {
         (
             self.vault_path.is_some(),
-            self.vault_path.as_ref().map(|p| p.to_string_lossy().to_string()),
+            self.vault_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string()),
             self.profile.clone(),
         )
     }
@@ -76,7 +75,9 @@ impl VaultManager {
     }
 
     pub fn get_database(&self) -> Result<&ArrowDatabase, String> {
-        self.db.as_ref().ok_or_else(|| "Vault não aberto".to_string())
+        self.db
+            .as_ref()
+            .ok_or_else(|| "Vault não aberto".to_string())
     }
 
     pub fn get_vault_path(&self) -> Result<PathBuf, String> {
@@ -89,7 +90,11 @@ impl VaultManager {
         profile_path(path).exists() && db_path(path).exists()
     }
 
-    pub fn create_vault(&mut self, path: &Path, profile_name: &str) -> Result<LocalProfile, String> {
+    pub fn create_vault(
+        &mut self,
+        path: &Path,
+        profile_name: &str,
+    ) -> Result<LocalProfile, String> {
         let name = profile_name.trim();
         if name.is_empty() {
             return Err("Nome do perfil é obrigatório".to_string());

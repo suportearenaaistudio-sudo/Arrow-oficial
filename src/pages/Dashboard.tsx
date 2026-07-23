@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Compass, Target, CheckSquare, Flame, DollarSign, Heart, Smile, Meh, Frown, TrendingUp, Plus } from 'lucide-react';
+import { Compass, Target, CheckSquare, Flame, DollarSign, Heart, Smile, Meh, Frown, TrendingUp, Plus, StickyNote } from 'lucide-react';
 import { ArrowCard } from '@/components/ui/ArrowCard';
 import { useCycles, getCurrentWeek, getCycleProgress } from '@/hooks/useCycles';
 import { useGoals } from '@/hooks/useGoals';
@@ -7,6 +7,7 @@ import { useTasks } from '@/hooks/useTasks';
 import { useHabits } from '@/hooks/useHabits';
 import { useTransactions } from '@/hooks/useTransactions';
 import { useNavigate } from 'react-router-dom';
+import { usePageContextMenu } from '@/contexts/DesktopContextMenuContext';
 import { Progress } from '@/components/ui/progress';
 import TimeBlocks from '@/components/ui/TimeBlocks';
 import WorkoutDashboardCard from '@/components/workouts/WorkoutDashboardCard';
@@ -32,6 +33,16 @@ export default function Dashboard() {
   const completedTasks = byStatus.concluida.length;
   const totalTasks = tasks.length;
   const taskRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
+  usePageContextMenu(
+    () => [
+      { id: 'go-tasks', label: 'Ir para tarefas', icon: CheckSquare, onClick: () => navigate('/tasks') },
+      { id: 'go-goals', label: 'Ir para metas', icon: Target, onClick: () => navigate('/goals') },
+      { id: 'go-pomodoro', label: 'Ir para pomodoro', icon: Flame, onClick: () => navigate('/pomodoro') },
+      { id: 'go-notes', label: 'Ir para notas', icon: StickyNote, onClick: () => navigate('/notes') },
+    ],
+    [],
+  );
 
   function formatCurrency(v: number) {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);

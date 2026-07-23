@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Calendar, Play, Pause, Trash2, Edit2, Plus, Clock, Target, Repeat, ChevronRight, Eye, Sprout, Briefcase, Dumbbell, Heart, Palette, Wallet, BookOpen, Scale, RefreshCw } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useCycles, getCurrentWeek, getCycleProgress } from '@/hooks/useCycles';
+import { usePageContextMenu } from '@/contexts/DesktopContextMenuContext';
 import { useWeeklyScores } from '@/hooks/useWeeklyScores';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Switch } from '@/components/ui/switch';
@@ -226,6 +227,18 @@ export default function Cycles() {
     concluidos: cycles.filter(c => c.status === 'concluido').length,
     pausados: cycles.filter(c => c.status === 'pausado').length,
   };
+
+  usePageContextMenu(
+    () => [
+      {
+        id: 'new-cycle',
+        label: 'Novo ciclo',
+        icon: Plus,
+        onClick: () => setFormOpen(true),
+      },
+    ],
+    [],
+  );
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

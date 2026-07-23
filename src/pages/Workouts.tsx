@@ -7,6 +7,7 @@ import {
 import { useTheme } from '@/contexts/ThemeContext';
 import { useWorkouts, useWorkoutTemplates, useExerciseProgress } from '@/hooks/useWorkouts';
 import { useCycles, getCurrentWeek } from '@/hooks/useCycles';
+import { usePageContextMenu } from '@/contexts/DesktopContextMenuContext';
 import type {
   WorkoutSplitType, WorkoutSession, ExerciseLog, ExerciseSet, WorkoutFocus,
   WorkoutTrainingType, WorkoutScheduleEntry,
@@ -56,6 +57,18 @@ export default function Workouts() {
   const [duration, setDuration] = useState(60);
   const [editingTemplate, setEditingTemplate] = useState<string | null>(null);
   const [progressExercise, setProgressExercise] = useState<{ name: string; id?: string } | null>(null);
+
+  usePageContextMenu(
+    () => [
+      {
+        id: 'new-program',
+        label: 'Novo programa',
+        icon: Plus,
+        onClick: () => setWizardOpen(true),
+      },
+    ],
+    [],
+  );
 
   const { data: progressData } = useExerciseProgress(
     progressExercise?.name ?? null,

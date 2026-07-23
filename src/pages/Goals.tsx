@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Target, Plus, Search, Edit2, Trash2, TrendingUp, ArrowRight, User, Briefcase, Heart, Wallet, BookOpen, Users, Palette, Plane, Calendar } from 'lucide-react';
 import { useGoals } from '@/hooks/useGoals';
+import { usePageContextMenu } from '@/contexts/DesktopContextMenuContext';
 import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -38,6 +39,22 @@ export default function Goals() {
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  usePageContextMenu(
+    () => [
+      {
+        id: 'new-goal',
+        label: 'Nova meta',
+        icon: Plus,
+        onClick: () => {
+          setEditingGoal(null);
+          setForm(emptyForm);
+          setFormOpen(true);
+        },
+      },
+    ],
+    [],
+  );
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

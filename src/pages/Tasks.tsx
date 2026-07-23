@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Plus, LayoutGrid, Grid2x2, CalendarDays } from 'lucide-react';
+import { usePageContextMenu } from '@/contexts/DesktopContextMenuContext';
 import { useTasks } from '@/hooks/useTasks';
 import { useGoals } from '@/hooks/useGoals';
 import { useFocusTimer } from '@/contexts/FocusTimerContext';
@@ -91,6 +92,39 @@ export default function Tasks() {
     setEditingTask(null);
     setForm(emptyForm);
   }
+
+  usePageContextMenu(
+    () => [
+      {
+        id: 'new-task',
+        label: 'Nova tarefa',
+        icon: Plus,
+        onClick: () => {
+          resetForm();
+          setFormOpen(true);
+        },
+      },
+      {
+        id: 'view-kanban',
+        label: 'Ver Kanban',
+        icon: LayoutGrid,
+        onClick: () => setView('kanban'),
+      },
+      {
+        id: 'view-eisenhower',
+        label: 'Ver Eisenhower',
+        icon: Grid2x2,
+        onClick: () => setView('eisenhower'),
+      },
+      {
+        id: 'view-calendar',
+        label: 'Ver calendário',
+        icon: CalendarDays,
+        onClick: () => setView('calendar'),
+      },
+    ],
+    [view],
+  );
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

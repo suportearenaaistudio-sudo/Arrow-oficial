@@ -4,9 +4,27 @@ export function isDesktop(): boolean {
   return checkDesktop();
 }
 
+/** True only for the native macOS build, not merely any Tauri desktop app. */
+export function isMacOSDesktop(): boolean {
+  return isDesktop() && typeof navigator !== 'undefined' && /Macintosh|Mac OS X/i.test(navigator.userAgent);
+}
+
+/** True only for the native Windows build. */
+export function isWindowsDesktop(): boolean {
+  return isDesktop() && typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent);
+}
+
+/** Visual corner radius on Windows (CSS); keep in sync with DWM rounding feel. */
+export const WINDOWS_WINDOW_RADIUS_PX = 12;
+
 export function markDesktopRoot(): void {
-  if (typeof document !== 'undefined' && isDesktop()) {
-    document.documentElement.classList.add('desktop', 'is-desktop');
+  if (typeof document === 'undefined' || !isDesktop()) return;
+
+  document.documentElement.classList.add('desktop', 'is-desktop');
+
+  if (isWindowsDesktop()) {
+    document.documentElement.classList.add('is-windows-desktop');
+    document.documentElement.style.setProperty('--arrow-window-radius', `${WINDOWS_WINDOW_RADIUS_PX}px`);
   }
 }
 

@@ -3,6 +3,7 @@ import type { LucideIcon } from 'lucide-react';
 import { useSidebar } from '@/contexts/SidebarContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { usePlatformChrome, SIDEBAR_TRANSITION, SIDEBAR_HEADER_EXTRA } from '@/hooks/usePlatformChrome';
+import { isMacOSDesktop, isWindowsDesktop } from '@/lib/platform';
 import {
   LayoutDashboard, Calendar, Target, ListChecks,
   Repeat, Wallet, StickyNote, BarChart3,
@@ -58,7 +59,9 @@ export default function AppSidebar() {
   const navigate = useNavigate();
   const { collapsed } = useSidebar();
   const { theme, isDark, glassScope } = useTheme();
-  const { isDesktopApp, titleBarHeight } = usePlatformChrome(collapsed);
+  const { isDesktopApp, titleBarHeight, topBarPaddingTop } = usePlatformChrome(collapsed);
+  const isMacApp = isMacOSDesktop();
+  const isWindowsApp = isWindowsDesktop();
 
   const glassNav = isDark && glassScope !== 'none';
   const textColor = theme.textPrimary;
@@ -100,6 +103,12 @@ export default function AppSidebar() {
     );
   };
 
+  const headerBandHeight = isMacApp
+    ? titleBarHeight + SIDEBAR_HEADER_EXTRA
+    : isWindowsApp
+      ? topBarPaddingTop
+      : 8;
+
   return (
     <aside
       className={`arrow-sidebar fixed top-0 bottom-0 z-30 overflow-hidden${glassNav ? ' arrow-sidebar--glass-nav' : ''}`}
@@ -116,8 +125,8 @@ export default function AppSidebar() {
         {/* Traffic-light band — drag region, no branding */}
         <div
           className="flex-shrink-0 w-full"
-          style={{ height: isDesktopApp ? titleBarHeight + SIDEBAR_HEADER_EXTRA : 8 }}
-          data-tauri-drag-region
+          style={{ height: headerBandHeight }}
+          data-tauri-drag-region={isDesktopApp ? true : undefined}
         />
 
         <nav className="flex-1 px-2 pt-1 overflow-y-auto space-y-4">

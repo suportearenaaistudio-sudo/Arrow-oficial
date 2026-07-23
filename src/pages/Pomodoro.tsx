@@ -3,8 +3,41 @@ import PomodoroHero from '@/components/pomodoro/PomodoroHero';
 import PomodoroSessionHistory from '@/components/pomodoro/PomodoroSessionHistory';
 import PomodoroStats from '@/components/pomodoro/PomodoroStats';
 import TimeBlockSection from '@/components/time-blocks/TimeBlockSection';
+import { useFocusTimer } from '@/contexts/FocusTimerContext';
+import { usePageContextMenu } from '@/contexts/DesktopContextMenuContext';
+import { Play, Pause, RotateCcw } from 'lucide-react';
 
 export default function Pomodoro() {
+  const { status, running, startSession, togglePause, reset } = useFocusTimer();
+
+  usePageContextMenu(
+    () => [
+      {
+        id: 'toggle-timer',
+        label:
+          status === 'idle' || status === 'completed'
+            ? 'Iniciar foco'
+            : running
+              ? 'Pausar'
+              : 'Retomar',
+        icon: running ? Pause : Play,
+        onClick: () => {
+          if (status === 'idle' || status === 'completed') startSession();
+          else togglePause();
+        },
+      },
+      {
+        id: 'reset-timer',
+        label: 'Reiniciar timer',
+        icon: RotateCcw,
+        onClick: () => {
+          reset(true);
+        },
+      },
+    ],
+    [status, running],
+  );
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}

@@ -9,6 +9,9 @@ import { VisualQualityProvider } from "@/contexts/VisualQualityContext";
 import { RainSoundProvider } from "@/contexts/RainSoundContext";
 import { FocusTimerProvider } from "@/contexts/FocusTimerContext";
 import AppLayout from "@/components/layout/AppLayout";
+import AppUpdateChecker from "@/components/layout/AppUpdateChecker";
+import DesktopContextMenu from "@/components/layout/DesktopContextMenu";
+import { DesktopContextMenuProvider } from "@/contexts/DesktopContextMenuContext";
 
 // Pages
 import VaultSetup from "./pages/VaultSetup";
@@ -36,6 +39,7 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <VaultProvider>
+        <AppUpdateChecker />
         <ThemeProvider>
         <VisualQualityProvider>
         <RainSoundProvider>
@@ -43,6 +47,8 @@ const App = () => (
         <Sonner position="top-right" />
         <LazyMotion features={domAnimation}>
         <BrowserRouter>
+          <DesktopContextMenuProvider>
+          <DesktopContextMenu />
           <Routes>
             {/* Public */}
             <Route path="/setup" element={<VaultSetup />} />
@@ -73,6 +79,7 @@ const App = () => (
             {/* Catch-all for routes outside layout */}
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </DesktopContextMenuProvider>
         </BrowserRouter>
         </LazyMotion>
         </FocusTimerProvider>

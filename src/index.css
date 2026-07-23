@@ -313,8 +313,46 @@
 
   .arrow-topbar button,
   .arrow-topbar input,
-  .arrow-topbar a {
+  .arrow-topbar a,
+  .arrow-window-control {
     -webkit-app-region: no-drag;
+  }
+
+  .arrow-desktop-context-menu,
+  .arrow-desktop-context-menu-backdrop {
+    -webkit-app-region: no-drag;
+    pointer-events: auto;
+  }
+
+  .arrow-desktop-context-menu-item {
+    -webkit-app-region: no-drag;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    transition: background-color 0.1s ease, color 0.1s ease;
+  }
+
+  .arrow-desktop-context-menu-item[data-hovered='true'] {
+    outline: none;
+  }
+
+  .arrow-desktop-context-menu-item .arrow-desktop-context-menu-icon {
+    transition: color 0.1s ease;
+  }
+
+  /* === Windows rounded frameless window === */
+  html.is-windows-desktop,
+  html.is-windows-desktop body {
+    background: transparent !important;
+    overflow: hidden;
+  }
+
+  html.is-windows-desktop:not(.is-window-maximized) #root {
+    min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;
+    border-radius: var(--arrow-window-radius, 12px);
+    isolation: isolate;
   }
 
   /* === Sidebar — frosted glass (theme-aware via CSS vars) === */

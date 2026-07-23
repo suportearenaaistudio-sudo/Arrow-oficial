@@ -4,9 +4,7 @@ pub const AI_PERSONAL_CONTEXT_KEY: &str = "ai_personal_context";
 pub const MAX_PERSONAL_CONTEXT_CHARS: usize = 500;
 
 pub fn get_personal_context(db: &ArrowDatabase) -> Result<String, String> {
-    Ok(db
-        .get_setting(AI_PERSONAL_CONTEXT_KEY)?
-        .unwrap_or_default())
+    Ok(db.get_setting(AI_PERSONAL_CONTEXT_KEY)?.unwrap_or_default())
 }
 
 pub fn save_personal_context(db: &ArrowDatabase, context: &str) -> Result<(), String> {
@@ -41,7 +39,11 @@ pub fn should_refresh_personal_context(user_message: &str) -> bool {
     .any(|k| lower.contains(k))
 }
 
-pub fn build_personal_refresh_prompt(existing: &str, user_message: &str, assistant_message: &str) -> String {
+pub fn build_personal_refresh_prompt(
+    existing: &str,
+    user_message: &str,
+    assistant_message: &str,
+) -> String {
     let assistant_snip: String = assistant_message.chars().take(280).collect();
     let user_snip: String = user_message.chars().take(280).collect();
     format!(

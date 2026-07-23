@@ -4,6 +4,8 @@ import { motion } from 'framer-motion';
 import { Compass, FolderOpen, FolderPlus, Loader2, AlertCircle, HardDrive } from 'lucide-react';
 import { useVault } from '@/contexts/VaultContext';
 import { AuthStarfield } from '@/components/ui/AuthStarfield';
+import WindowControls from '@/components/layout/WindowControls';
+import { isWindowsDesktop } from '@/lib/platform';
 
 export default function VaultSetup() {
   const { isReady, loading, isDesktopApp, pickAndCreateVault, pickAndOpenVault } = useVault();
@@ -11,6 +13,7 @@ export default function VaultSetup() {
   const [profileName, setProfileName] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const isWindowsApp = isWindowsDesktop();
 
   if (loading) {
     return (
@@ -59,6 +62,13 @@ export default function VaultSetup() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] relative overflow-hidden flex items-center justify-center p-6">
+      {isWindowsApp && (
+        <div className="fixed top-0 left-0 right-0 h-9 z-[100] flex items-center justify-end px-2 pointer-events-none">
+          <div className="pointer-events-auto" data-tauri-drag-region={false}>
+            <WindowControls />
+          </div>
+        </div>
+      )}
       <AuthStarfield />
 
       <motion.div

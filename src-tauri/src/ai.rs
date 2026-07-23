@@ -25,15 +25,17 @@ fn agent_debug_log(location: &str, message: &str, data: Value, hypothesis_id: &s
     // #endregion
 }
 
+pub use crate::ai_context::MAX_CONTEXT_CHARS;
 use crate::ai_context::{
     build_system_prompt, estimate_prompt_stats, estimate_tokens, stats_from_usage, ContextStats,
 };
-pub use crate::ai_context::MAX_CONTEXT_CHARS;
 use crate::ai_personal::{
     build_personal_refresh_prompt, get_personal_context, save_personal_context,
     should_refresh_personal_context,
 };
-use crate::ai_tools::{execute_tool, is_destructive, tool_declarations, tool_preview, tools_affecting_queries};
+use crate::ai_tools::{
+    execute_tool, is_destructive, tool_declarations, tool_preview, tools_affecting_queries,
+};
 use crate::db::ArrowDatabase;
 use crate::notes::NotesStore;
 use crate::types::LocalProfile;
@@ -152,19 +154,15 @@ pub fn call_gemini(
         json!({ "model": model, "withTools": with_tools, "runId": "post-fix" }),
         "C",
     );
-    let res = client
-        .post(&url)
-        .json(&body)
-        .send()
-        .map_err(|e| {
-            agent_debug_log(
-                "ai.rs:call_gemini:network_err",
-                "network error",
-                json!({ "error": e.to_string() }),
-                "C",
-            );
-            "Erro de rede ao chamar Gemini".to_string()
-        })?;
+    let res = client.post(&url).json(&body).send().map_err(|e| {
+        agent_debug_log(
+            "ai.rs:call_gemini:network_err",
+            "network error",
+            json!({ "error": e.to_string() }),
+            "C",
+        );
+        "Erro de rede ao chamar Gemini".to_string()
+    })?;
 
     let status = res.status();
     let data: Value = res.json().map_err(|e| {
@@ -334,7 +332,10 @@ fn append_tools_batch(contents: &mut Value, exchanges: &[(String, Value, Value)]
 }
 
 fn append_tool_exchange(contents: &mut Value, name: &str, args: &Value, result: &Value) {
-    append_tools_batch(contents, &[(name.to_string(), args.clone(), result.clone())]);
+    append_tools_batch(
+        contents,
+        &[(name.to_string(), args.clone(), result.clone())],
+    );
 }
 
 fn try_refresh_personal_context(
@@ -476,7 +477,8 @@ impl AiService {
 
             if !response.function_calls.is_empty() {
                 let mut batch: Vec<(String, Value, Value)> = Vec::new();
-                let mut seen_tools: std::collections::HashSet<String> = std::collections::HashSet::new();
+                let mut seen_tools: std::collections::HashSet<String> =
+                    std::collections::HashSet::new();
                 for (name, args) in response.function_calls {
                     if is_destructive(&name) {
                         let pid = Uuid::new_v4().to_string();
@@ -556,7 +558,10 @@ impl AiService {
                 message.to_string()
             };
             let convs = db.list_ai_conversations(user_id)?;
-            if let Some(conv) = convs.iter().find(|c| c.get("id").and_then(|v| v.as_str()) == Some(conversation_id)) {
+            if let Some(conv) = convs
+                .iter()
+                .find(|c| c.get("id").and_then(|v| v.as_str()) == Some(conversation_id))
+            {
                 if conv.get("title").and_then(|v| v.as_str()) == Some("Nova conversa") {
                     let _ = db.update_ai_conversation_title(conversation_id, &title);
                 }
@@ -625,7 +630,9 @@ impl AiService {
     ) -> Result<SendMessageResult, String> {
         let pending = {
             let mut store = pending_store.lock().map_err(|e| e.to_string())?;
-            store.remove(pending_id).ok_or_else(|| "Ação expirada ou inválida".to_string())?
+            store
+                .remove(pending_id)
+                .ok_or_else(|| "Ação expirada ou inválida".to_string())?
         };
 
         if !confirmed {

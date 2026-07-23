@@ -5,7 +5,11 @@ use std::sync::{Arc, Mutex};
 use serde_json::{json, Value};
 use tauri::{AppHandle, State};
 
-use crate::ai::{AiService, PendingToolCall, GEMINI_API_KEY_SETTING, GEMINI_MODEL_SETTING, current_week_start, mask_api_key, test_gemini_connection, resolve_gemini_model, MAX_CONTEXT_CHARS, MAX_CONTEXT_TOKEN_BUDGET};
+use crate::ai::{
+    current_week_start, mask_api_key, resolve_gemini_model, test_gemini_connection, AiService,
+    PendingToolCall, GEMINI_API_KEY_SETTING, GEMINI_MODEL_SETTING, MAX_CONTEXT_CHARS,
+    MAX_CONTEXT_TOKEN_BUDGET,
+};
 use crate::ai_personal::get_personal_context;
 use crate::app_state::{load_app_state, save_app_state};
 use crate::db::ArrowDatabase;
@@ -31,7 +35,6 @@ fn profile_to_ui(vault: &VaultManager, profile: &crate::types::LocalProfile) -> 
         updated_at: profile.updated_at.clone(),
     }
 }
-
 
 #[tauri::command]
 pub fn vault_get_status(state: State<'_, AppData>) -> Result<VaultStatus, String> {
@@ -60,11 +63,7 @@ pub async fn vault_pick_folder(
     } else {
         "Abrir vault Arrow existente"
     };
-    let path = app
-        .dialog()
-        .file()
-        .set_title(title)
-        .blocking_pick_folder();
+    let path = app.dialog().file().set_title(title).blocking_pick_folder();
     Ok(path.map(|p| p.to_string()))
 }
 
@@ -198,7 +197,9 @@ pub fn db_cycles_update(state: State<'_, AppData>, data: Value) -> Result<Value,
         .ok_or_else(|| "id é obrigatório".to_string())?;
     let mut updates = data.as_object().cloned().unwrap_or_default();
     updates.remove("id");
-    Ok(json!(vault.get_database()?.update_cycle(id, Value::Object(updates))?))
+    Ok(json!(vault
+        .get_database()?
+        .update_cycle(id, Value::Object(updates))?))
 }
 
 #[tauri::command]
@@ -220,7 +221,9 @@ pub fn db_cycles_activate(state: State<'_, AppData>, id: String) -> Result<(), S
 pub fn db_goals_list(state: State<'_, AppData>, filters: Option<Value>) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     let user_id = vault.get_profile_id()?;
-    Ok(json!(vault.get_database()?.list_goals(&user_id, filters)?))
+    Ok(json!(vault
+        .get_database()?
+        .list_goals(&user_id, filters)?))
 }
 
 #[tauri::command]
@@ -239,7 +242,9 @@ pub fn db_goals_update(state: State<'_, AppData>, data: Value) -> Result<Value, 
         .ok_or_else(|| "id é obrigatório".to_string())?;
     let mut updates = data.as_object().cloned().unwrap_or_default();
     updates.remove("id");
-    Ok(json!(vault.get_database()?.update_goal(id, Value::Object(updates))?))
+    Ok(json!(vault
+        .get_database()?
+        .update_goal(id, Value::Object(updates))?))
 }
 
 #[tauri::command]
@@ -272,7 +277,9 @@ pub fn db_tasks_update(state: State<'_, AppData>, data: Value) -> Result<Value, 
         .ok_or_else(|| "id é obrigatório".to_string())?;
     let mut updates = data.as_object().cloned().unwrap_or_default();
     updates.remove("id");
-    Ok(json!(vault.get_database()?.update_task(id, Value::Object(updates))?))
+    Ok(json!(vault
+        .get_database()?
+        .update_task(id, Value::Object(updates))?))
 }
 
 #[tauri::command]
@@ -305,7 +312,9 @@ pub fn db_habits_update(state: State<'_, AppData>, data: Value) -> Result<Value,
         .ok_or_else(|| "id é obrigatório".to_string())?;
     let mut updates = data.as_object().cloned().unwrap_or_default();
     updates.remove("id");
-    vault.get_database()?.update_habit(id, Value::Object(updates))?;
+    vault
+        .get_database()?
+        .update_habit(id, Value::Object(updates))?;
     Ok(Value::Null)
 }
 
@@ -317,17 +326,24 @@ pub fn db_habits_delete(state: State<'_, AppData>, id: String) -> Result<(), Str
 }
 
 #[tauri::command]
-pub fn db_transactions_list(state: State<'_, AppData>, filters: Option<Value>) -> Result<Value, String> {
+pub fn db_transactions_list(
+    state: State<'_, AppData>,
+    filters: Option<Value>,
+) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     let user_id = vault.get_profile_id()?;
-    Ok(json!(vault.get_database()?.list_transactions(&user_id, filters)?))
+    Ok(json!(vault
+        .get_database()?
+        .list_transactions(&user_id, filters)?))
 }
 
 #[tauri::command]
 pub fn db_transactions_create(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     let user_id = vault.get_profile_id()?;
-    Ok(json!(vault.get_database()?.create_transaction(&user_id, data)?))
+    Ok(json!(vault
+        .get_database()?
+        .create_transaction(&user_id, data)?))
 }
 
 #[tauri::command]
@@ -377,17 +393,22 @@ pub fn db_vision_save(state: State<'_, AppData>, data: Value) -> Result<Value, S
 }
 
 #[tauri::command]
-pub fn db_weekly_scores_list(state: State<'_, AppData>, cycle_id: Option<String>) -> Result<Value, String> {
+pub fn db_weekly_scores_list(
+    state: State<'_, AppData>,
+    cycle_id: Option<String>,
+) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     let user_id = vault.get_profile_id()?;
-    Ok(json!(vault.get_database()?.list_weekly_scores(
-        &user_id,
-        cycle_id.as_deref()
-    )?))
+    Ok(json!(vault
+        .get_database()?
+        .list_weekly_scores(&user_id, cycle_id.as_deref())?))
 }
 
 #[tauri::command]
-pub fn db_weekly_scores_finalize(state: State<'_, AppData>, payload: Value) -> Result<Value, String> {
+pub fn db_weekly_scores_finalize(
+    state: State<'_, AppData>,
+    payload: Value,
+) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     let user_id = vault.get_profile_id()?;
     let tasks_planned = payload
@@ -427,23 +448,32 @@ pub fn db_weekly_scores_finalize(state: State<'_, AppData>, payload: Value) -> R
 pub fn db_workout_programs_list(state: State<'_, AppData>) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     let user_id = vault.get_profile_id()?;
-    Ok(json!(vault.get_database()?.list_workout_programs(&user_id)?))
+    Ok(json!(vault
+        .get_database()?
+        .list_workout_programs(&user_id)?))
 }
 
 #[tauri::command]
 pub fn db_workout_programs_create(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     let user_id = vault.get_profile_id()?;
-    Ok(json!(vault.get_database()?.create_workout_program(&user_id, data)?))
+    Ok(json!(vault
+        .get_database()?
+        .create_workout_program(&user_id, data)?))
 }
 
 #[tauri::command]
 pub fn db_workout_programs_update(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
-    let id = data.get("id").and_then(|v| v.as_str()).ok_or_else(|| "id é obrigatório".to_string())?;
+    let id = data
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "id é obrigatório".to_string())?;
     let mut updates = data.as_object().cloned().unwrap_or_default();
     updates.remove("id");
-    Ok(json!(vault.get_database()?.update_workout_program(id, Value::Object(updates))?))
+    Ok(json!(vault
+        .get_database()?
+        .update_workout_program(id, Value::Object(updates))?))
 }
 
 #[tauri::command]
@@ -454,25 +484,43 @@ pub fn db_workout_programs_delete(state: State<'_, AppData>, id: String) -> Resu
 }
 
 #[tauri::command]
-pub fn db_workout_templates_list(state: State<'_, AppData>, program_id: String) -> Result<Value, String> {
+pub fn db_workout_templates_list(
+    state: State<'_, AppData>,
+    program_id: String,
+) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
-    Ok(json!(vault.get_database()?.list_workout_templates(&program_id)?))
+    Ok(json!(vault
+        .get_database()?
+        .list_workout_templates(&program_id)?))
 }
 
 #[tauri::command]
-pub fn db_workout_templates_create(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+pub fn db_workout_templates_create(
+    state: State<'_, AppData>,
+    data: Value,
+) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     let user_id = vault.get_profile_id()?;
-    Ok(json!(vault.get_database()?.create_workout_template(&user_id, data)?))
+    Ok(json!(vault
+        .get_database()?
+        .create_workout_template(&user_id, data)?))
 }
 
 #[tauri::command]
-pub fn db_workout_templates_update(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+pub fn db_workout_templates_update(
+    state: State<'_, AppData>,
+    data: Value,
+) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
-    let id = data.get("id").and_then(|v| v.as_str()).ok_or_else(|| "id é obrigatório".to_string())?;
+    let id = data
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "id é obrigatório".to_string())?;
     let mut updates = data.as_object().cloned().unwrap_or_default();
     updates.remove("id");
-    Ok(json!(vault.get_database()?.update_workout_template(id, Value::Object(updates))?))
+    Ok(json!(vault
+        .get_database()?
+        .update_workout_template(id, Value::Object(updates))?))
 }
 
 #[tauri::command]
@@ -483,26 +531,38 @@ pub fn db_workout_templates_delete(state: State<'_, AppData>, id: String) -> Res
 }
 
 #[tauri::command]
-pub fn db_workout_sessions_list(state: State<'_, AppData>, filters: Option<Value>) -> Result<Value, String> {
+pub fn db_workout_sessions_list(
+    state: State<'_, AppData>,
+    filters: Option<Value>,
+) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     let user_id = vault.get_profile_id()?;
-    Ok(json!(vault.get_database()?.list_workout_sessions(&user_id, filters)?))
+    Ok(json!(vault
+        .get_database()?
+        .list_workout_sessions(&user_id, filters)?))
 }
 
 #[tauri::command]
 pub fn db_workout_sessions_create(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     let user_id = vault.get_profile_id()?;
-    Ok(json!(vault.get_database()?.create_workout_session(&user_id, data)?))
+    Ok(json!(vault
+        .get_database()?
+        .create_workout_session(&user_id, data)?))
 }
 
 #[tauri::command]
 pub fn db_workout_sessions_update(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
-    let id = data.get("id").and_then(|v| v.as_str()).ok_or_else(|| "id é obrigatório".to_string())?;
+    let id = data
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "id é obrigatório".to_string())?;
     let mut updates = data.as_object().cloned().unwrap_or_default();
     updates.remove("id");
-    Ok(json!(vault.get_database()?.update_workout_session(id, Value::Object(updates))?))
+    Ok(json!(vault
+        .get_database()?
+        .update_workout_session(id, Value::Object(updates))?))
 }
 
 #[tauri::command]
@@ -520,7 +580,11 @@ pub fn db_workout_sessions_complete(
     duration_minutes: Option<i64>,
 ) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
-    Ok(json!(vault.get_database()?.complete_workout_session(&id, exercises_log, duration_minutes)?))
+    Ok(json!(vault.get_database()?.complete_workout_session(
+        &id,
+        exercises_log,
+        duration_minutes
+    )?))
 }
 
 #[tauri::command]
@@ -570,16 +634,23 @@ pub fn db_media_lists_list(state: State<'_, AppData>) -> Result<Value, String> {
 pub fn db_media_lists_create(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     let user_id = vault.get_profile_id()?;
-    Ok(json!(vault.get_database()?.create_media_list(&user_id, data)?))
+    Ok(json!(vault
+        .get_database()?
+        .create_media_list(&user_id, data)?))
 }
 
 #[tauri::command]
 pub fn db_media_lists_update(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
-    let id = data.get("id").and_then(|v| v.as_str()).ok_or_else(|| "id é obrigatório".to_string())?;
+    let id = data
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "id é obrigatório".to_string())?;
     let mut updates = data.as_object().cloned().unwrap_or_default();
     updates.remove("id");
-    Ok(json!(vault.get_database()?.update_media_list(id, Value::Object(updates))?))
+    Ok(json!(vault
+        .get_database()?
+        .update_media_list(id, Value::Object(updates))?))
 }
 
 #[tauri::command]
@@ -599,16 +670,23 @@ pub fn db_media_items_list(state: State<'_, AppData>, list_id: String) -> Result
 pub fn db_media_items_create(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     let user_id = vault.get_profile_id()?;
-    Ok(json!(vault.get_database()?.create_media_item(&user_id, data)?))
+    Ok(json!(vault
+        .get_database()?
+        .create_media_item(&user_id, data)?))
 }
 
 #[tauri::command]
 pub fn db_media_items_update(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
-    let id = data.get("id").and_then(|v| v.as_str()).ok_or_else(|| "id é obrigatório".to_string())?;
+    let id = data
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "id é obrigatório".to_string())?;
     let mut updates = data.as_object().cloned().unwrap_or_default();
     updates.remove("id");
-    Ok(json!(vault.get_database()?.update_media_item(id, Value::Object(updates))?))
+    Ok(json!(vault
+        .get_database()?
+        .update_media_item(id, Value::Object(updates))?))
 }
 
 #[tauri::command]
@@ -626,7 +704,9 @@ pub fn db_media_items_move(
     rank: Option<i64>,
 ) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
-    Ok(json!(vault.get_database()?.move_media_item(&id, &status, rank)?))
+    Ok(json!(vault
+        .get_database()?
+        .move_media_item(&id, &status, rank)?))
 }
 
 #[tauri::command]
@@ -636,27 +716,41 @@ pub fn db_release_schedules_list(
 ) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     let user_id = vault.get_profile_id()?;
-    Ok(json!(vault.get_database()?.list_release_schedules(
-        &user_id,
-        media_type.as_deref(),
-    )?))
+    Ok(json!(vault
+        .get_database()?
+        .list_release_schedules(&user_id, media_type.as_deref(),)?))
 }
 
 #[tauri::command]
-pub fn db_release_schedules_create(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+pub fn db_release_schedules_create(
+    state: State<'_, AppData>,
+    data: Value,
+) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     let user_id = vault.get_profile_id()?;
-    Ok(json!(vault.get_database()?.create_release_schedule(&user_id, data)?))
+    Ok(json!(vault
+        .get_database()?
+        .create_release_schedule(&user_id, data)?))
 }
 
 #[tauri::command]
-pub fn db_release_schedules_update(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+pub fn db_release_schedules_update(
+    state: State<'_, AppData>,
+    data: Value,
+) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     let user_id = vault.get_profile_id()?;
-    let id = data.get("id").and_then(|v| v.as_str()).ok_or_else(|| "id é obrigatório".to_string())?;
+    let id = data
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "id é obrigatório".to_string())?;
     let mut updates = data.as_object().cloned().unwrap_or_default();
     updates.remove("id");
-    Ok(json!(vault.get_database()?.update_release_schedule(id, &user_id, Value::Object(updates))?))
+    Ok(json!(vault.get_database()?.update_release_schedule(
+        id,
+        &user_id,
+        Value::Object(updates)
+    )?))
 }
 
 #[tauri::command]
@@ -673,16 +767,17 @@ pub fn db_release_schedules_delete(
 }
 
 #[tauri::command]
-pub fn db_release_schedules_mark_released(state: State<'_, AppData>, id: String) -> Result<Value, String> {
+pub fn db_release_schedules_mark_released(
+    state: State<'_, AppData>,
+    id: String,
+) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     Ok(json!(vault.get_database()?.mark_release_released(&id)?))
 }
 
 // ─── Notes commands ─────────────────────────────────────────
 
-fn notes_vault_context(
-    vault: &VaultManager,
-) -> Result<(String, std::path::PathBuf), String> {
+fn notes_vault_context(vault: &VaultManager) -> Result<(String, std::path::PathBuf), String> {
     let profile = vault
         .get_status()
         .2
@@ -792,8 +887,10 @@ pub(crate) fn build_note_graph(
         })
         .collect();
 
-    let allowed: std::collections::HashSet<String> =
-        nodes.iter().filter_map(|n| n.get("id").and_then(|v| v.as_str()).map(String::from)).collect();
+    let allowed: std::collections::HashSet<String> = nodes
+        .iter()
+        .filter_map(|n| n.get("id").and_then(|v| v.as_str()).map(String::from))
+        .collect();
 
     let filtered_edges: Vec<Value> = edges
         .into_iter()
@@ -826,7 +923,11 @@ pub fn notes_get(state: State<'_, AppData>, id: String) -> Result<Value, String>
 }
 
 #[tauri::command]
-pub fn notes_search(state: State<'_, AppData>, query: String, limit: Option<i32>) -> Result<Value, String> {
+pub fn notes_search(
+    state: State<'_, AppData>,
+    query: String,
+    limit: Option<i32>,
+) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     let (user_id, path) = notes_vault_context(&vault)?;
     let store = NotesStore::new(&path, &user_id);
@@ -1025,9 +1126,11 @@ pub async fn ai_save_api_key(state: State<'_, AppData>, api_key: String) -> Resu
     };
     let key_for_test = key.clone();
     let model_for_test = model.clone();
-    tauri::async_runtime::spawn_blocking(move || test_gemini_connection(&key_for_test, &model_for_test))
-        .await
-        .map_err(|e| format!("Falha interna ao testar API: {}", e))??;
+    tauri::async_runtime::spawn_blocking(move || {
+        test_gemini_connection(&key_for_test, &model_for_test)
+    })
+    .await
+    .map_err(|e| format!("Falha interna ao testar API: {}", e))??;
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     let db = vault.get_database()?;
     db.set_setting(GEMINI_API_KEY_SETTING, &key)?;
@@ -1055,9 +1158,17 @@ pub fn ai_remove_api_key(state: State<'_, AppData>) -> Result<Value, String> {
 }
 
 #[tauri::command]
-pub async fn ai_test_api_key(state: State<'_, AppData>, api_key: Option<String>, model: Option<String>) -> Result<(), String> {
+pub async fn ai_test_api_key(
+    state: State<'_, AppData>,
+    api_key: Option<String>,
+    model: Option<String>,
+) -> Result<(), String> {
     // #region agent log
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("/Users/marcola/Projetos/Arrow/.cursor/debug-af36b1.log") {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/Users/marcola/Projetos/Arrow/.cursor/debug-af36b1.log")
+    {
         let line = serde_json::json!({"sessionId":"af36b1","location":"commands.rs:ai_test_api_key","message":"api test started","data":{"hasInlineKey":api_key.is_some(),"hasInlineModel":model.is_some()},"hypothesisId":"D","timestamp":chrono::Utc::now().timestamp_millis()});
         let _ = std::io::Write::write_all(&mut f, format!("{}\n", line).as_bytes());
     }
@@ -1099,7 +1210,10 @@ pub fn ai_list_conversations(state: State<'_, AppData>) -> Result<Value, String>
 }
 
 #[tauri::command]
-pub fn ai_create_conversation(state: State<'_, AppData>, title: Option<String>) -> Result<Value, String> {
+pub fn ai_create_conversation(
+    state: State<'_, AppData>,
+    title: Option<String>,
+) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     let user_id = vault.get_profile_id()?;
     let row = vault
@@ -1115,13 +1229,22 @@ pub fn ai_delete_conversation(state: State<'_, AppData>, id: String) -> Result<(
 }
 
 #[tauri::command]
-pub fn ai_rename_conversation(state: State<'_, AppData>, id: String, title: String) -> Result<(), String> {
+pub fn ai_rename_conversation(
+    state: State<'_, AppData>,
+    id: String,
+    title: String,
+) -> Result<(), String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
-    vault.get_database()?.update_ai_conversation_title(&id, title.trim())
+    vault
+        .get_database()?
+        .update_ai_conversation_title(&id, title.trim())
 }
 
 #[tauri::command]
-pub fn ai_list_messages(state: State<'_, AppData>, conversation_id: String) -> Result<Value, String> {
+pub fn ai_list_messages(
+    state: State<'_, AppData>,
+    conversation_id: String,
+) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     let rows = vault
         .get_database()?
@@ -1135,7 +1258,10 @@ pub fn ai_get_context_stats(
     conversation_id: Option<String>,
 ) -> Result<Value, String> {
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
-    let profile = vault.get_status().2.ok_or_else(|| "Vault não aberto".to_string())?;
+    let profile = vault
+        .get_status()
+        .2
+        .ok_or_else(|| "Vault não aberto".to_string())?;
     let history = if let Some(ref cid) = conversation_id {
         vault.get_database()?.list_ai_messages(cid, Some(20))?
     } else {
@@ -1187,7 +1313,11 @@ pub async fn ai_send_message(
     message: String,
 ) -> Result<Value, String> {
     // #region agent log
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("/Users/marcola/Projetos/Arrow/.cursor/debug-af36b1.log") {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/Users/marcola/Projetos/Arrow/.cursor/debug-af36b1.log")
+    {
         let line = serde_json::json!({"sessionId":"af36b1","location":"commands.rs:ai_send_message:entry","message":"command invoked","data":{"conversationId":&conversation_id,"messageLen":message.len(),"runId":"post-fix"},"hypothesisId":"A","timestamp":chrono::Utc::now().timestamp_millis()});
         let _ = std::io::Write::write_all(&mut f, format!("{}\n", line).as_bytes());
     }
@@ -1195,13 +1325,20 @@ pub async fn ai_send_message(
     let (user_id, profile, path, db_file, conversation_id, message, pending) = {
         let vault = state.vault.lock().map_err(|e| e.to_string())?;
         // #region agent log
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("/Users/marcola/Projetos/Arrow/.cursor/debug-af36b1.log") {
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("/Users/marcola/Projetos/Arrow/.cursor/debug-af36b1.log")
+        {
             let line = serde_json::json!({"sessionId":"af36b1","location":"commands.rs:ai_send_message:vault_locked","message":"vault mutex acquired briefly","data":{"runId":"post-fix"},"hypothesisId":"A","timestamp":chrono::Utc::now().timestamp_millis()});
             let _ = std::io::Write::write_all(&mut f, format!("{}\n", line).as_bytes());
         }
         // #endregion
         let user_id = vault.get_profile_id()?;
-        let profile = vault.get_status().2.ok_or_else(|| "Vault não aberto".to_string())?;
+        let profile = vault
+            .get_status()
+            .2
+            .ok_or_else(|| "Vault não aberto".to_string())?;
         let path = vault.get_vault_path()?;
         let db_file = db_path(&path);
         (
@@ -1236,13 +1373,21 @@ pub async fn ai_send_message(
     // #region agent log
     match &result {
         Ok(r) => {
-            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("/Users/marcola/Projetos/Arrow/.cursor/debug-af36b1.log") {
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open("/Users/marcola/Projetos/Arrow/.cursor/debug-af36b1.log")
+            {
                 let line = serde_json::json!({"sessionId":"af36b1","location":"commands.rs:ai_send_message:ok","message":"send returned ok","data":{"status":&r.status},"hypothesisId":"A","timestamp":chrono::Utc::now().timestamp_millis()});
                 let _ = std::io::Write::write_all(&mut f, format!("{}\n", line).as_bytes());
             }
         }
         Err(e) => {
-            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("/Users/marcola/Projetos/Arrow/.cursor/debug-af36b1.log") {
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open("/Users/marcola/Projetos/Arrow/.cursor/debug-af36b1.log")
+            {
                 let line = serde_json::json!({"sessionId":"af36b1","location":"commands.rs:ai_send_message:err","message":"send returned err","data":{"error":e},"hypothesisId":"C","timestamp":chrono::Utc::now().timestamp_millis()});
                 let _ = std::io::Write::write_all(&mut f, format!("{}\n", line).as_bytes());
             }
@@ -1262,7 +1407,10 @@ pub async fn ai_confirm_tool(
     let (user_id, profile, path, db_file, pending_id, pending) = {
         let vault = state.vault.lock().map_err(|e| e.to_string())?;
         let user_id = vault.get_profile_id()?;
-        let profile = vault.get_status().2.ok_or_else(|| "Vault não aberto".to_string())?;
+        let profile = vault
+            .get_status()
+            .2
+            .ok_or_else(|| "Vault não aberto".to_string())?;
         let path = vault.get_vault_path()?;
         let db_file = db_path(&path);
         (
@@ -1325,6 +1473,25 @@ fn apply_macos_vibrancy(window: &tauri::WebviewWindow, is_dark: bool) -> Result<
     .map_err(|e| e.to_string())
 }
 
+/// Use the native Windows backdrop. Windows 11 exposes Mica; Windows 10 uses
+/// Acrylic as a compatible fallback. Both effects remain behind the user's
+/// existing glass setting in the frontend.
+#[cfg(target_os = "windows")]
+fn apply_windows_vibrancy(window: &tauri::WebviewWindow, is_dark: bool) -> Result<(), String> {
+    use window_vibrancy::{apply_acrylic, apply_mica};
+
+    if apply_mica(window, Some(is_dark)).is_ok() {
+        return Ok(());
+    }
+
+    let tint = if is_dark {
+        (18, 18, 18, 190)
+    } else {
+        (245, 245, 247, 190)
+    };
+    apply_acrylic(window, Some(tint)).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn sync_window_vibrancy(app: AppHandle, is_dark: bool) -> Result<(), String> {
     #[cfg(target_os = "macos")]
@@ -1349,7 +1516,30 @@ pub fn sync_window_vibrancy(app: AppHandle, is_dark: bool) -> Result<(), String>
         state.enabled = true;
         state.is_dark = is_dark;
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        use tauri::Manager;
+        use window_vibrancy::{clear_acrylic, clear_mica};
+
+        let window = app
+            .get_webview_window("main")
+            .ok_or_else(|| "Janela principal não encontrada".to_string())?;
+
+        let mut state = VIBRANCY_STATE.lock().map_err(|e| e.to_string())?;
+        if state.enabled && state.is_dark == is_dark {
+            return Ok(());
+        }
+
+        if state.enabled {
+            let _ = clear_mica(&window);
+            let _ = clear_acrylic(&window);
+        }
+
+        apply_windows_vibrancy(&window, is_dark)?;
+        state.enabled = true;
+        state.is_dark = is_dark;
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let _ = (app, is_dark);
     }
@@ -1372,10 +1562,48 @@ pub fn clear_window_vibrancy(app: AppHandle) -> Result<(), String> {
         let mut state = VIBRANCY_STATE.lock().map_err(|e| e.to_string())?;
         state.enabled = false;
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        use tauri::Manager;
+        use window_vibrancy::{clear_acrylic, clear_mica};
+
+        let window = app
+            .get_webview_window("main")
+            .ok_or_else(|| "Janela principal não encontrada".to_string())?;
+        let _ = clear_mica(&window);
+        let _ = clear_acrylic(&window);
+
+        let mut state = VIBRANCY_STATE.lock().map_err(|e| e.to_string())?;
+        state.enabled = false;
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let _ = app;
     }
+    Ok(())
+}
+
+/// Native Win11 rounded corners for the frameless window (safe — no SetWindowRgn).
+#[cfg(target_os = "windows")]
+pub fn apply_windows_window_shape(window: &tauri::WebviewWindow) -> Result<(), String> {
+    use windows::Win32::Graphics::Dwm::{
+        DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND,
+    };
+
+    let _ = window.set_shadow(false);
+    let hwnd = window.hwnd().map_err(|e| e.to_string())?;
+    let preference = DWMWCP_ROUND;
+
+    unsafe {
+        DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            &preference as *const _ as *const _,
+            std::mem::size_of_val(&preference) as u32,
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
     Ok(())
 }
 

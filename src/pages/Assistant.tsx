@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Sparkles, Settings, Loader2, AlertCircle } from 'lucide-react';
+import { Sparkles, Settings, Loader2, AlertCircle, MessageSquarePlus } from 'lucide-react';
+import { usePageContextMenu } from '@/contexts/DesktopContextMenuContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { useVault } from '@/contexts/VaultContext';
 import { useAISettings } from '@/hooks/useAISettings';
@@ -59,6 +60,20 @@ function AssistantDesktop() {
     id: string;
     preview: string;
   } | null>(null);
+
+  usePageContextMenu(
+    () => [
+      {
+        id: 'new-conversation',
+        label: 'Nova conversa',
+        icon: MessageSquarePlus,
+        onClick: () => {
+          void handleNewConversation();
+        },
+      },
+    ],
+    [conversations.length],
+  );
 
   useEffect(() => {
     refetchSettings();

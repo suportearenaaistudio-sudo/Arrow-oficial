@@ -4,12 +4,8 @@ use crate::commands::build_note_graph;
 use crate::db::ArrowDatabase;
 use crate::notes::NotesStore;
 
-pub const DESTRUCTIVE_TOOLS: &[&str] = &[
-    "delete_task",
-    "delete_goal",
-    "delete_habit",
-    "delete_note",
-];
+pub const DESTRUCTIVE_TOOLS: &[&str] =
+    &["delete_task", "delete_goal", "delete_habit", "delete_note"];
 
 const MAX_LIST_ITEMS: usize = 12;
 const MAX_NOTE_CONTENT_CHARS: usize = 120;
@@ -40,7 +36,11 @@ pub fn compact_tool_result(name: &str, result: Value) -> Value {
             &["id", "title", "category", "frequency_type", "streak"],
             MAX_LIST_ITEMS,
         ),
-        "list_cycles" => compact_list(&result, &["id", "title", "status", "start_date", "end_date"], 5),
+        "list_cycles" => compact_list(
+            &result,
+            &["id", "title", "status", "start_date", "end_date"],
+            5,
+        ),
         "list_transactions" => compact_list(
             &result,
             &["id", "description", "amount", "type", "category", "date"],
@@ -58,7 +58,7 @@ pub fn compact_tool_result(name: &str, result: Value) -> Value {
                 out.insert("unresolved".to_string(), u.clone());
             }
             Value::Object(out)
-        },
+        }
         "note_graph" => compact_graph(&result),
         "get_vision" => compact_object_fields(&result, &["vision_text", "updated_at"]),
         "get_checkin" => compact_object_fields(
@@ -71,15 +71,15 @@ pub fn compact_tool_result(name: &str, result: Value) -> Value {
 }
 
 fn compact_list(data: &Value, fields: &[&str], limit: usize) -> Value {
-    let items: Vec<Value> = data
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
+    let items: Vec<Value> = data.as_array().cloned().unwrap_or_default();
     let total = items.len();
     let compacted: Vec<Value> = items
         .into_iter()
         .take(limit)
-        .filter_map(|item| item.as_object().map(|o| Value::Object(pick_fields(o, fields))))
+        .filter_map(|item| {
+            item.as_object()
+                .map(|o| Value::Object(pick_fields(o, fields)))
+        })
         .collect();
     json!({
         "items": compacted,
@@ -90,8 +90,16 @@ fn compact_list(data: &Value, fields: &[&str], limit: usize) -> Value {
 }
 
 fn compact_graph(data: &Value) -> Value {
-    let nodes = data.get("nodes").and_then(|v| v.as_array()).cloned().unwrap_or_default();
-    let edges = data.get("edges").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let nodes = data
+        .get("nodes")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let edges = data
+        .get("edges")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
     let node_total = nodes.len();
     let edge_total = edges.len();
     let compact_nodes: Vec<Value> = nodes
@@ -99,7 +107,10 @@ fn compact_graph(data: &Value) -> Value {
         .take(20)
         .filter_map(|item| {
             let o = item.as_object()?;
-            Some(Value::Object(pick_fields(o, &["id", "title", "folder", "linkCount"])))
+            Some(Value::Object(pick_fields(
+                o,
+                &["id", "title", "folder", "linkCount"],
+            )))
         })
         .collect();
     let compact_edges: Vec<Value> = edges.into_iter().take(30).collect();
@@ -113,10 +124,7 @@ fn compact_graph(data: &Value) -> Value {
 }
 
 fn compact_notes(data: &Value) -> Value {
-    let items: Vec<Value> = data
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
+    let items: Vec<Value> = data.as_array().cloned().unwrap_or_default();
     let total = items.len();
     let compacted: Vec<Value> = items
         .into_iter()
@@ -202,10 +210,22 @@ pub fn is_destructive(name: &str) -> bool {
 
 pub fn tool_preview(name: &str, args: &Value) -> String {
     match name {
-        "delete_task" => format!("Excluir tarefa {}", args.get("id").and_then(|v| v.as_str()).unwrap_or("?")),
-        "delete_goal" => format!("Excluir meta {}", args.get("id").and_then(|v| v.as_str()).unwrap_or("?")),
-        "delete_habit" => format!("Excluir hábito {}", args.get("id").and_then(|v| v.as_str()).unwrap_or("?")),
-        "delete_note" => format!("Excluir nota {}", args.get("id").and_then(|v| v.as_str()).unwrap_or("?")),
+        "delete_task" => format!(
+            "Excluir tarefa {}",
+            args.get("id").and_then(|v| v.as_str()).unwrap_or("?")
+        ),
+        "delete_goal" => format!(
+            "Excluir meta {}",
+            args.get("id").and_then(|v| v.as_str()).unwrap_or("?")
+        ),
+        "delete_habit" => format!(
+            "Excluir hábito {}",
+            args.get("id").and_then(|v| v.as_str()).unwrap_or("?")
+        ),
+        "delete_note" => format!(
+            "Excluir nota {}",
+            args.get("id").and_then(|v| v.as_str()).unwrap_or("?")
+        ),
         _ => format!("{}: {}", name, args),
     }
 }
@@ -299,7 +319,10 @@ pub fn execute_tool(
                     }))
                 })
                 .collect();
-            Ok(compact_tool_result(name, json!({ "backlinks": enriched, "unresolved": unresolved })))
+            Ok(compact_tool_result(
+                name,
+                json!({ "backlinks": enriched, "unresolved": unresolved }),
+            ))
         }
         "note_graph" => {
             let focus = map.get("focus_note_id").and_then(|v| v.as_str());
@@ -375,7 +398,10 @@ pub fn execute_tool(
                 .get("completion_history")
                 .and_then(|v| serde_json::from_value(v.clone()).ok())
                 .unwrap_or_default();
-            if let Some(pos) = history.iter().position(|e| e.get("date").and_then(|v| v.as_str()) == Some(date)) {
+            if let Some(pos) = history
+                .iter()
+                .position(|e| e.get("date").and_then(|v| v.as_str()) == Some(date))
+            {
                 history.remove(pos);
             } else {
                 history.push(json!({ "date": date, "completed": true }));
@@ -407,22 +433,34 @@ pub fn execute_tool(
             Ok(json!({ "success": true, "transaction": row }))
         }
         "delete_task" => {
-            let id = map.get("id").and_then(|v| v.as_str()).ok_or_else(|| "id é obrigatório".to_string())?;
+            let id = map
+                .get("id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "id é obrigatório".to_string())?;
             db.delete_task(id)?;
             Ok(json!({ "success": true, "deleted": id }))
         }
         "delete_goal" => {
-            let id = map.get("id").and_then(|v| v.as_str()).ok_or_else(|| "id é obrigatório".to_string())?;
+            let id = map
+                .get("id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "id é obrigatório".to_string())?;
             db.delete_goal(id)?;
             Ok(json!({ "success": true, "deleted": id }))
         }
         "delete_habit" => {
-            let id = map.get("id").and_then(|v| v.as_str()).ok_or_else(|| "id é obrigatório".to_string())?;
+            let id = map
+                .get("id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "id é obrigatório".to_string())?;
             db.delete_habit(id)?;
             Ok(json!({ "success": true, "deleted": id }))
         }
         "delete_note" => {
-            let id = map.get("id").and_then(|v| v.as_str()).ok_or_else(|| "id é obrigatório".to_string())?;
+            let id = map
+                .get("id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "id é obrigatório".to_string())?;
             notes.delete(id)?;
             Ok(json!({ "success": true, "deleted": id }))
         }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { Edit3 } from 'lucide-react';
+import { Edit3, Plus, FolderPlus, Search, BookOpen, Share2 } from 'lucide-react';
+import { usePageContextMenu } from '@/contexts/DesktopContextMenuContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useNotes, useNoteBacklinks } from '@/hooks/useNotes';
 import { useNoteNavigation } from '@/hooks/useNoteNavigation';
@@ -172,6 +173,27 @@ export default function NotesWorkspace() {
       setSelectedFolder(name.trim());
     }
   }
+
+  usePageContextMenu(
+    () => [
+      { id: 'new-note', label: 'Nova nota', icon: Plus, onClick: handleInstantNewNote },
+      { id: 'new-folder', label: 'Nova pasta', icon: FolderPlus, onClick: handleNewFolder },
+      { id: 'quick-open', label: 'Busca rápida', icon: Search, onClick: () => setQuickOpen(true) },
+      {
+        id: 'reading-mode',
+        label: readingMode ? 'Sair do modo leitura' : 'Modo leitura',
+        icon: BookOpen,
+        onClick: () => setReadingMode((v) => !v),
+      },
+      {
+        id: 'graph-view',
+        label: isGraphRoute ? 'Voltar ao editor' : 'Grafo de notas',
+        icon: Share2,
+        onClick: () => navigate(isGraphRoute ? '/notes' : '/notes/graph'),
+      },
+    ],
+    [readingMode, isGraphRoute],
+  );
 
   function handleCloseTab(id: string) {
     setOpenTabs((prev) => {

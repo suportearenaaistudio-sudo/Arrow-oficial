@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Plus, Library } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
+import { usePageContextMenu } from '@/contexts/DesktopContextMenuContext';
 import { useMediaLists, useMediaListItems } from '@/hooks/useMediaLists';
 import SegmentPillBar from '@/components/ui/SegmentPillBar';
 import MediaKanbanColumn from '@/components/lists/MediaKanbanColumn';
@@ -46,6 +47,18 @@ export default function Lists() {
   const allItems = useMemo(
     () => [...byStatus.top, ...byStatus.visto, ...byStatus.a_ver],
     [byStatus],
+  );
+
+  usePageContextMenu(
+    () => [
+      {
+        id: 'new-list',
+        label: 'Nova lista',
+        icon: Plus,
+        onClick: () => setNewListOpen(true),
+      },
+    ],
+    [],
   );
 
   function handleAddItem(

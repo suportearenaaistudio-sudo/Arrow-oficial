@@ -11,8 +11,8 @@ mod paths;
 mod types;
 mod vault;
 
-use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use tauri::Manager;
 
@@ -22,6 +22,8 @@ use vault::VaultManager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -30,6 +32,12 @@ pub fn run() {
                         .level(log::LevelFilter::Info)
                         .build(),
                 )?;
+            }
+
+            #[cfg(target_os = "windows")]
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_decorations(false);
+                let _ = commands::apply_windows_window_shape(&window);
             }
 
             let app_state_path = app
@@ -146,6 +154,12 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app_handle, event| {
             if let tauri::RunEvent::Ready = event {
+                #[cfg(target_os = "windows")]
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    let _ = window.set_decorations(false);
+                    let _ = commands::apply_windows_window_shape(&window);
+                }
+
                 let _ = commands::sync_window_vibrancy(app_handle.clone(), false);
             }
         });

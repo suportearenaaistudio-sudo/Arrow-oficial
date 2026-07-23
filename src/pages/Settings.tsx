@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { User, Download, Trash2, LogOut, Shield, Globe, Palette, Check, Sun, Moon, Stars, Camera, Loader2, CloudRain, Volume2, Volume1, Volume, VolumeX, Sparkles, Ban, PanelLeft, Layout, Monitor, Key, Eye, EyeOff, ExternalLink } from 'lucide-react';
+import { User, Download, Trash2, LogOut, Shield, Globe, Palette, Check, Sun, Moon, Stars, Camera, Loader2, CloudRain, Volume2, Volume1, Volume, VolumeX, Sparkles, Ban, PanelLeft, Layout, Monitor, Key, Eye, EyeOff, ExternalLink, RefreshCw } from 'lucide-react';
 import { useVault } from '@/contexts/VaultContext';
 import {
   useTheme,
@@ -23,6 +23,7 @@ import type { VisualQuality } from '@/lib/platform';
 import { useAISettings } from '@/hooks/useAISettings';
 import WeeklyTokenCounter from '@/components/ai/WeeklyTokenCounter';
 import { isDesktop } from '@/lib/desktop-api';
+import { checkForAppUpdates, getAppVersion } from '@/lib/app-updater';
 import { DEFAULT_GEMINI_MODEL, GEMINI_MODEL_PRESETS } from '@/lib/ai-constants';
 
 function SettingsSection({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
@@ -98,6 +99,12 @@ export default function Settings() {
   const [aiSaving, setAiSaving] = useState(false);
   const [aiTesting, setAiTesting] = useState(false);
   const [aiSavingModel, setAiSavingModel] = useState(false);
+  const [appVersion, setAppVersion] = useState('…');
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+
+  useEffect(() => {
+    void getAppVersion().then(setAppVersion);
+  }, []);
 
   useEffect(() => {
     refetchAiSettings();
@@ -108,6 +115,23 @@ export default function Settings() {
       setModelInput(aiSettings.model);
     }
   }, [aiSettings?.model]);
+
+  async function handleCheckUpdates() {
+    if (!isDesktop()) {
+      showInfo('Atualizações automáticas só funcionam no app desktop instalado.');
+      return;
+    }
+    if (import.meta.env.DEV) {
+      showInfo('No modo dev, use npm.cmd run build:desktop para gerar instalador.');
+      return;
+    }
+    setCheckingUpdates(true);
+    try {
+      await checkForAppUpdates();
+    } finally {
+      setCheckingUpdates(false);
+    }
+  }
 
   async function handleSaveModel(model: string) {
     const trimmed = model.trim();
@@ -811,6 +835,28 @@ export default function Settings() {
 
       {/* ── Geral ── */}
       <SettingsSection title="Geral">
+      {isDesktop() && (
+        <SettingsCard
+          title="Atualizações"
+          icon={<RefreshCw className="w-5 h-5" style={{ color: 'var(--arrow-accent)' }} />}
+          description="O Arrow verifica novas versões ao abrir. Instalações feitas pelo instalador (.exe / .msi) recebem updates automaticamente."
+        >
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm" style={{ color: 'var(--arrow-text-secondary)' }}>
+              Versão atual: <strong style={{ color: 'var(--arrow-text-primary)' }}>v{appVersion}</strong>
+            </span>
+            <button
+              type="button"
+              onClick={() => void handleCheckUpdates()}
+              disabled={checkingUpdates}
+              className="arrow-btn-secondary text-sm inline-flex items-center gap-2"
+            >
+              {checkingUpdates ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              Verificar atualizações
+            </button>
+          </div>
+        </SettingsCard>
+      )}
       <SettingsCard title="Idioma" icon={<Globe className="w-5 h-5" style={{ color: 'var(--arrow-accent)' }} />}>
         <select className="px-4 py-2.5 rounded-xl text-sm" style={{ background: 'var(--arrow-bg-card)', border: `1px solid var(--arrow-border)`, color: 'var(--arrow-text-primary)' }}>
           <option value="pt-BR">Portugues (BR)</option>

@@ -36,25 +36,25 @@ fn parse_frontmatter(raw: &str) -> (serde_json::Map<String, Value>, String) {
                 .map(|s| s.trim_start_matches('\n').trim_start_matches('\r'))
                 .unwrap_or("")
                 .to_string();
-        let mut meta = serde_json::Map::new();
-        for line in yaml.lines() {
-            if let Some((key, value)) = line.split_once(':') {
-                let key = key.trim();
-                let val = value.trim();
-                let parsed: Value = if val.starts_with('[') && val.ends_with(']') {
-                    serde_json::from_str(&val.replace('\'', "\"")).unwrap_or(json!([]))
-                } else if val == "null" {
-                    Value::Null
-                } else if (val.starts_with('"') && val.ends_with('"'))
-                    || (val.starts_with('\'') && val.ends_with('\''))
-                {
-                    Value::String(val[1..val.len() - 1].to_string())
-                } else {
-                    Value::String(val.to_string())
-                };
-                meta.insert(key.to_string(), parsed);
+            let mut meta = serde_json::Map::new();
+            for line in yaml.lines() {
+                if let Some((key, value)) = line.split_once(':') {
+                    let key = key.trim();
+                    let val = value.trim();
+                    let parsed: Value = if val.starts_with('[') && val.ends_with(']') {
+                        serde_json::from_str(&val.replace('\'', "\"")).unwrap_or(json!([]))
+                    } else if val == "null" {
+                        Value::Null
+                    } else if (val.starts_with('"') && val.ends_with('"'))
+                        || (val.starts_with('\'') && val.ends_with('\''))
+                    {
+                        Value::String(val[1..val.len() - 1].to_string())
+                    } else {
+                        Value::String(val.to_string())
+                    };
+                    meta.insert(key.to_string(), parsed);
+                }
             }
-        }
             return (meta, body);
         }
     }
@@ -65,10 +65,20 @@ fn serialize_frontmatter(meta: &serde_json::Map<String, Value>, body: &str) -> S
     let mut lines = vec!["---".to_string()];
     for (key, value) in meta {
         let line = match value {
-            Value::Array(_) => format!("{}: {}", key, serde_json::to_string(value).unwrap_or_default()),
+            Value::Array(_) => format!(
+                "{}: {}",
+                key,
+                serde_json::to_string(value).unwrap_or_default()
+            ),
             Value::Null => format!("{}: null", key),
-            Value::String(s) => format!("{}: {}", key, serde_json::to_string(s).unwrap_or_default()),
-            other => format!("{}: {}", key, serde_json::to_string(other).unwrap_or_default()),
+            Value::String(s) => {
+                format!("{}: {}", key, serde_json::to_string(s).unwrap_or_default())
+            }
+            other => format!(
+                "{}: {}",
+                key,
+                serde_json::to_string(other).unwrap_or_default()
+            ),
         };
         lines.push(line);
     }
@@ -129,7 +139,11 @@ fn read_note_file(vault_path: &Path, abs_path: &Path) -> Result<NoteFileMeta, St
         .strip_prefix(&notes_base)
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
-    let folder = if folder_rel == "." { String::new() } else { folder_rel };
+    let folder = if folder_rel == "." {
+        String::new()
+    } else {
+        folder_rel
+    };
 
     Ok(NoteFileMeta {
         id: meta
@@ -145,7 +159,11 @@ fn read_note_file(vault_path: &Path, abs_path: &Path) -> Result<NoteFileMeta, St
         tags: meta
             .get("tags")
             .and_then(|v| v.as_array())
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default(),
         folder,
         created_at: meta
@@ -192,14 +210,15 @@ impl<'a> NotesStore<'a> {
             .get("title")
             .and_then(|v| v.as_str())
             .ok_or_else(|| "title é obrigatório".to_string())?;
-        let content = input
-            .get("content")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let content = input.get("content").and_then(|v| v.as_str()).unwrap_or("");
         let tags: Vec<String> = input
             .get("tags")
             .and_then(|v| v.as_array())
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         let folder = input
             .get("folder")
@@ -253,7 +272,11 @@ impl<'a> NotesStore<'a> {
         let tags: Vec<String> = updates
             .get("tags")
             .and_then(|v| v.as_array())
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_else(|| existing.tags.clone());
         let folder = updates
             .get("folder")

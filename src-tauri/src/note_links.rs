@@ -133,10 +133,7 @@ pub fn resolve_title(title: &str, notes: &[NoteFileMeta]) -> Option<String> {
     if let Some(note) = notes.iter().find(|n| normalize_title(&n.title) == norm) {
         return Some(note.id.clone());
     }
-    if let Some(note) = notes
-        .iter()
-        .find(|n| slugify_title(&n.title) == slug)
-    {
+    if let Some(note) = notes.iter().find(|n| slugify_title(&n.title) == slug) {
         return Some(note.id.clone());
     }
     None

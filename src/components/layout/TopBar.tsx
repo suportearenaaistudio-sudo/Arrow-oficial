@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useVault } from '@/contexts/VaultContext';
 import { useSidebar } from '@/contexts/SidebarContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { usePlatformChrome, SIDEBAR_TRANSITION, TOPBAR_DESKTOP_PADDING_TOP } from '@/hooks/usePlatformChrome';
+import { usePlatformChrome, SIDEBAR_TRANSITION } from '@/hooks/usePlatformChrome';
 import {
   Search, Bell, Target, ListChecks, StickyNote, Sparkles,
   PanelLeft, ChevronDown, LogOut, Settings, X,
@@ -11,6 +11,7 @@ import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import FocusTimerPill from '@/components/layout/FocusTimerPill';
 import ThemeToggle from '@/components/layout/ThemeToggle';
+import WindowControls from '@/components/layout/WindowControls';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 const quickActions = [
@@ -24,7 +25,7 @@ export default function TopBar({ visible = true }: { visible?: boolean }) {
   const { profile, closeVault, vaultPath } = useVault();
   const { collapsed, toggle } = useSidebar();
   const { theme, isDark } = useTheme();
-  const { isDesktopApp, topBarTotalHeight, trafficLightInset } = usePlatformChrome(collapsed);
+  const { isDesktopApp, isWindowsApp, topBarTotalHeight, topBarPaddingTop, trafficLightInset } = usePlatformChrome(collapsed);
   const [profileOpen, setProfileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -62,7 +63,7 @@ export default function TopBar({ visible = true }: { visible?: boolean }) {
       data-hidden={visible ? undefined : 'true'}
       style={{
         height: topBarTotalHeight,
-        paddingTop: isDesktopApp ? TOPBAR_DESKTOP_PADDING_TOP : 0,
+        paddingTop: topBarPaddingTop,
         paddingLeft: trafficLightInset > 0 ? trafficLightInset : 12,
         paddingRight: 12,
         transition: `padding-left ${SIDEBAR_TRANSITION}`,
@@ -108,7 +109,10 @@ export default function TopBar({ visible = true }: { visible?: boolean }) {
         ))}
       </div>
 
-      <div className="flex-1 min-w-0" />
+      <div
+        className="flex-1 min-w-0"
+        data-tauri-drag-region={isDesktopApp ? true : undefined}
+      />
 
       <div className="flex items-center gap-1.5 flex-shrink-0">
         <Tooltip delayDuration={200}>
@@ -271,7 +275,7 @@ export default function TopBar({ visible = true }: { visible?: boolean }) {
                     style={{ color: theme.textMuted }}
                     title={vaultPath || ''}
                   >
-                    {vaultPath?.split('/').pop() || 'Vault'}
+                    {vaultPath?.split(/[\\/]/).pop() || 'Vault'}
                   </p>
                 </div>
                 <button
@@ -298,6 +302,8 @@ export default function TopBar({ visible = true }: { visible?: boolean }) {
             </>
           )}
         </div>
+
+        {isWindowsApp && <WindowControls />}
       </div>
     </header>
   );

@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Landmark, Plus, TrendingUp, TrendingDown, DollarSign, Trash2, ArrowUpCircle, ArrowDownCircle } from 'lucide-react';
 import { ArrowCard } from '@/components/ui/ArrowCard';
 import { useTheme } from '@/contexts/ThemeContext';
+import { usePageContextMenu } from '@/contexts/DesktopContextMenuContext';
 import { useTransactions } from '@/hooks/useTransactions';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -18,6 +19,18 @@ export default function Finances() {
   const { transactions, receitas, despesas, saldo, isLoading, createTransaction, deleteTransaction } = useTransactions();
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
+
+  usePageContextMenu(
+    () => [
+      {
+        id: 'new-transaction',
+        label: 'Nova transação',
+        icon: Plus,
+        onClick: () => setFormOpen(true),
+      },
+    ],
+    [],
+  );
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
