@@ -149,8 +149,8 @@ fn read_note_file(vault_path: &Path, abs_path: &Path) -> Result<NoteFileMeta, St
         id: meta
             .get("id")
             .and_then(|v| v.as_str())
-            .unwrap_or(&Uuid::new_v4().to_string())
-            .to_string(),
+            .map(String::from)
+            .unwrap_or_else(|| Uuid::new_v4().to_string()),
         title: meta
             .get("title")
             .and_then(|v| v.as_str())

@@ -207,6 +207,7 @@ impl ArrowDatabase {
             })
             .unwrap_or(0);
         if current == 0 {
+            self.migrate_schema(0)?;
             self.conn
                 .execute(
                     "INSERT INTO schema_version (version) VALUES (?)",
@@ -222,7 +223,30 @@ impl ArrowDatabase {
                 )
                 .map_err(|e| e.to_string())?;
         }
+        // Vaults criados com schema_version=6 direto nunca rodavam a migration da tabela note_links.
+        self.ensure_note_links_table()?;
         Ok(())
+    }
+
+    fn ensure_note_links_table(&self) -> Result<(), String> {
+        self.conn
+            .execute_batch(
+                "CREATE TABLE IF NOT EXISTS note_links (
+                  id TEXT PRIMARY KEY,
+                  user_id TEXT NOT NULL,
+                  source_note_id TEXT NOT NULL,
+                  target_note_id TEXT,
+                  target_title TEXT NOT NULL,
+                  alias TEXT,
+                  link_type TEXT NOT NULL DEFAULT 'wikilink',
+                  created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_note_links_source
+                  ON note_links(user_id, source_note_id);
+                CREATE INDEX IF NOT EXISTS idx_note_links_target
+                  ON note_links(user_id, target_note_id);",
+            )
+            .map_err(|e| e.to_string())
     }
 
     fn column_exists(&self, table: &str, column: &str) -> bool {
@@ -320,24 +344,7 @@ impl ArrowDatabase {
             )?;
         }
         if from < 6 {
-            self.conn
-                .execute_batch(
-                    "CREATE TABLE IF NOT EXISTS note_links (
-                      id TEXT PRIMARY KEY,
-                      user_id TEXT NOT NULL,
-                      source_note_id TEXT NOT NULL,
-                      target_note_id TEXT,
-                      target_title TEXT NOT NULL,
-                      alias TEXT,
-                      link_type TEXT NOT NULL DEFAULT 'wikilink',
-                      created_at TEXT NOT NULL
-                    );
-                    CREATE INDEX IF NOT EXISTS idx_note_links_source
-                      ON note_links(user_id, source_note_id);
-                    CREATE INDEX IF NOT EXISTS idx_note_links_target
-                      ON note_links(user_id, target_note_id);",
-                )
-                .map_err(|e| e.to_string())?;
+            self.ensure_note_links_table()?;
         }
         Ok(())
     }
