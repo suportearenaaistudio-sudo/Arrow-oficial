@@ -10,7 +10,8 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { syncTaskOnPomodoroComplete, syncTaskOnPomodoroStart } from '@/lib/task-pomodoro';
-import { addFillToBlock, resolveBlockForSession, todayKey } from '@/lib/time-blocks';
+import { todayKey } from '@/lib/time-blocks';
+import { desktopAPI } from '@/lib/desktop-api';
 import {
   countCompletedFocusToday,
   countFocusMinutesToday,
@@ -485,9 +486,21 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      const block = resolveBlockForSession(todayKey(), prev.taskId, prev.activeBlockId);
-      if (block) {
-        addFillToBlock(todayKey(), block.id, prev.durationMin);
+      if (prev.activeBlockId) {
+        try {
+          const blocks = await desktopAPI.db.timeBlocks.list(todayKey()) as Array<{
+            id: string; startMin: number; endMin: number; filledMin: number;
+          }>;
+          const block = blocks.find((item) => item.id === prev.activeBlockId);
+          if (block) {
+            await desktopAPI.db.timeBlocks.update({
+              id: block.id,
+              filledMin: Math.min(Math.max(1, block.endMin - block.startMin), block.filledMin + prev.durationMin),
+            });
+          }
+        } catch {
+          // Timer completion must remain resilient if the vault is unavailable.
+        }
         window.dispatchEvent(
           new CustomEvent('arrow-time-blocks-updated', { detail: { date: todayKey() } }),
         );
@@ -812,12 +825,7 @@ export function FocusTimerProvider({ children }: { children: ReactNode }) {
     setState((prev) => {
       promoteTaskOnFocus(prev.taskId);
       const p = loadPrefs();
-      const block = resolveBlockForSession(
-        todayKey(),
-        prev.taskId,
-        prev.activeBlockId ?? p.activeBlockId,
-      );
-      const activeBlockId = block?.id ?? prev.activeBlockId ?? p.activeBlockId;
+      const activeBlockId = prev.activeBlockId ?? p.activeBlockId;
       const next = startTimerInternal('focus', prev.durationMin, {
         ...prev,
         completedSessions: prev.status === 'idle' ? 0 : prev.completedSessions,

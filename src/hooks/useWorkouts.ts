@@ -7,6 +7,7 @@ import type {
   WorkoutProgram, WorkoutTemplate, WorkoutSession,
   ExerciseLog, ExerciseProgressPoint, WorkoutSplitType, WorkoutFocus,
   WorkoutTrainingType, WorkoutExercise,
+  WorkoutCheckin, WorkoutGoal, HealthDocument,
 } from '@/types/arrow';
 
 const SPLIT_LABELS: Record<WorkoutSplitType, string[]> = {
@@ -36,6 +37,20 @@ export function useWorkouts() {
     retry: false,
   });
 
+  const goalsQuery = useQuery({
+    queryKey: ['workout-goals', profile?.id],
+    queryFn: () => desktopAPI.db.workouts.goals.list() as Promise<WorkoutGoal[]>,
+    enabled: !!profile,
+    retry: false,
+  });
+
+  const documentsQuery = useQuery({
+    queryKey: ['health-documents', profile?.id],
+    queryFn: () => desktopAPI.db.workouts.healthDocuments.list() as Promise<HealthDocument[]>,
+    enabled: !!profile,
+    retry: false,
+  });
+
   const createProgram = useMutation({
     mutationFn: async (data: {
       name: string;
@@ -46,6 +61,11 @@ export function useWorkouts() {
       days_of_week: number[];
       duration_weeks: number;
       cycle_id?: string;
+      end_date?: string;
+      deload_mode?: WorkoutProgram['deload_mode'];
+      deload_after_sessions?: number;
+      deload_after_weeks?: number;
+      deload_volume_percent?: number;
       create_habit?: boolean;
       templates?: { label: string; name: string; exercises: WorkoutExercise[] }[];
     }) => {
@@ -68,6 +88,11 @@ export function useWorkouts() {
         days_of_week: data.days_of_week,
         duration_weeks: data.duration_weeks,
         cycle_id: data.cycle_id,
+        end_date: data.end_date,
+        deload_mode: data.deload_mode ?? 'manual',
+        deload_after_sessions: data.deload_after_sessions ?? null,
+        deload_after_weeks: data.deload_after_weeks ?? null,
+        deload_volume_percent: data.deload_volume_percent ?? 60,
         schedule: [],
         is_active: true,
       }) as WorkoutProgram;
@@ -84,9 +109,14 @@ export function useWorkouts() {
       }
 
       const labelToId = Object.fromEntries(createdTemplates.map((t) => [t.label, t.id]));
+      const scheduledTemplates = createdTemplates.filter((template) => {
+        const draft = templateDrafts.find((item) => item.label === template.label);
+        return template.label.toLowerCase() !== 'r'
+          && !/recupera|deload/i.test(draft?.name ?? '');
+      });
       const scheduleDrafts = buildScheduleFromDays(
         data.days_of_week,
-        createdTemplates.map((t) => t.label),
+        (scheduledTemplates.length ? scheduledTemplates : createdTemplates).map((t) => t.label),
       );
       const schedule = scheduleDrafts.map((s) => ({
         day: s.day,
@@ -172,16 +202,28 @@ export function useWorkouts() {
         durationMinutes,
       ) as WorkoutSession;
 
-      if (session.task_id) {
-        await desktopAPI.db.tasks.update({
-          id: session.task_id,
-          status: 'concluida',
-          completion_date: new Date().toISOString().split('T')[0],
-        });
-      }
-
       const programs = programsQuery.data || [];
       const program = programs.find(p => p.id === session.program_id);
+      if (program?.deload_mode === 'sessions' && program.deload_after_sessions) {
+        const completedStrength = (sessionsQuery.data || []).filter((item) => item.program_id === session.program_id && item.status === 'feito' && item.session_mode !== 'deload' && item.session_mode !== 'recuperacao').length + 1;
+        if (completedStrength % program.deload_after_sessions === 0) {
+          const next = (sessionsQuery.data || []).filter((item) => item.program_id === session.program_id && item.date > session.date && item.status === 'a_fazer')
+            .sort((a, b) => a.date.localeCompare(b.date))[0];
+          if (next) {
+            const templates = await desktopAPI.db.workouts.templates.list(session.program_id) as WorkoutTemplate[];
+            const recovery = templates.find((template) => template.label.toLowerCase() === 'r' || /recupera|deload/i.test(template.name));
+            await desktopAPI.db.workouts.sessions.update({ id: next.id, session_mode: 'recuperacao', ...(recovery ? { template_id: recovery.id } : {}) });
+          }
+        }
+      }
+      const completedForProgram = (sessionsQuery.data || []).filter((item) => item.program_id === session.program_id && item.status === 'feito').length + 1;
+      for (const goal of (goalsQuery.data || []).filter((item) => item.program_id === session.program_id && item.goal_type === 'frequencia' && item.status === 'ativo')) {
+        await desktopAPI.db.workouts.goals.update({
+          id: goal.id,
+          current_value: completedForProgram,
+          status: goal.target_frequency && completedForProgram >= goal.target_frequency ? 'concluido' : 'ativo',
+        });
+      }
       if (program?.habit_id) {
         const habits = await desktopAPI.db.habits.list() as Array<{
           id: string;
@@ -211,8 +253,8 @@ export function useWorkouts() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workout-sessions'] });
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
       queryClient.invalidateQueries({ queryKey: ['habits'] });
+      queryClient.invalidateQueries({ queryKey: ['workout-goals'] });
       showSuccess('Treino concluído!');
     },
     onError: () => showError('Erro ao concluir treino'),
@@ -239,8 +281,56 @@ export function useWorkouts() {
     onError: () => showError('Erro ao gerar agenda'),
   });
 
+  const createCheckin = useMutation({
+    mutationFn: async ({ session, checkin }: { session: WorkoutSession; checkin: Omit<WorkoutCheckin, 'id' | 'session_id'> }) => {
+      const saved = await desktopAPI.db.workouts.checkins.create({ session_id: session.id, ...checkin }) as WorkoutCheckin;
+      await desktopAPI.db.workouts.sessions.update({ id: session.id, checkin_id: saved.id });
+      const program = (programsQuery.data || []).find((item) => item.id === session.program_id);
+      if (checkin.performance_drop && program?.deload_mode === 'checkin_auto') {
+        const next = (sessionsQuery.data || []).filter((item) => item.program_id === session.program_id && item.date > session.date && item.status === 'a_fazer')
+          .sort((a, b) => a.date.localeCompare(b.date))[0];
+        if (next) {
+          const templates = await desktopAPI.db.workouts.templates.list(session.program_id) as WorkoutTemplate[];
+          const recovery = templates.find((template) => template.label.toLowerCase() === 'r' || /recupera|deload/i.test(template.name));
+          await desktopAPI.db.workouts.sessions.update({ id: next.id, session_mode: 'recuperacao', ...(recovery ? { template_id: recovery.id } : {}) });
+        }
+      }
+      return saved;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workout-sessions'] });
+      showSuccess('Check-in registrado');
+    },
+    onError: () => showError('Erro ao registrar check-in'),
+  });
+
+  const createGoal = useMutation({
+    mutationFn: (data: Partial<WorkoutGoal>) => desktopAPI.db.workouts.goals.create(data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workout-goals'] }),
+  });
+  const updateGoal = useMutation({
+    mutationFn: (data: Partial<WorkoutGoal> & { id: string }) => desktopAPI.db.workouts.goals.update(data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workout-goals'] }),
+  });
+  const deleteGoal = useMutation({
+    mutationFn: (id: string) => desktopAPI.db.workouts.goals.delete(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workout-goals'] }),
+  });
+  const importHealthDocument = useMutation({
+    mutationFn: async ({ sourcePath, data }: { sourcePath: string; data: Partial<HealthDocument> }) =>
+      desktopAPI.db.workouts.healthDocuments.import(sourcePath, data),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['health-documents'] }); showSuccess('Documento salvo no vault'); },
+    onError: () => showError('Não foi possível importar o documento'),
+  });
+  const deleteHealthDocument = useMutation({
+    mutationFn: (id: string) => desktopAPI.db.workouts.healthDocuments.delete(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['health-documents'] }),
+  });
+
   const programs = programsQuery.data || [];
   const sessions = sessionsQuery.data || [];
+  const goals = goalsQuery.data || [];
+  const healthDocuments = documentsQuery.data || [];
   const activePrograms = programs.filter(p => p.is_active);
   const activeProgram = activePrograms[0] || programs[0];
 
@@ -264,7 +354,7 @@ export function useWorkouts() {
   function getTodaySession(programId?: string) {
     const today = new Date().toISOString().split('T')[0];
     return sessions.find(s =>
-      s.date === today && s.status !== 'feito' &&
+      s.date === today && s.status !== 'feito' && s.status !== 'pulado' &&
       (!programId || s.program_id === programId),
     );
   }
@@ -273,6 +363,8 @@ export function useWorkouts() {
     programs,
     activePrograms,
     sessions,
+    goals,
+    healthDocuments,
     activeProgram,
     isLoading: programsQuery.isLoading || sessionsQuery.isLoading,
     createProgram,
@@ -281,6 +373,12 @@ export function useWorkouts() {
     deleteProgram,
     completeSession,
     generateWeek,
+    createCheckin,
+    createGoal,
+    updateGoal,
+    deleteGoal,
+    importHealthDocument,
+    deleteHealthDocument,
     getSessionsByWeek,
     getWeekWorkoutScore,
     getTodaySession,

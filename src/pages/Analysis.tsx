@@ -5,6 +5,9 @@ import { useTasks } from '@/hooks/useTasks';
 import { useHabits } from '@/hooks/useHabits';
 import { useTransactions } from '@/hooks/useTransactions';
 import { useNotes } from '@/hooks/useNotes';
+import { useTimeBlocks } from '@/hooks/useTimeBlocks';
+import { useDailyPlan } from '@/hooks/useDailyPlan';
+import { useNavigate } from 'react-router-dom';
 import { Progress } from '@/components/ui/progress';
 
 export default function Analysis() {
@@ -13,6 +16,9 @@ export default function Analysis() {
   const { habits, stats: habitStats } = useHabits();
   const { receitas, despesas, saldo } = useTransactions();
   const { notes } = useNotes();
+  const { totalPlannedMin, totalFilledMin } = useTimeBlocks();
+  const { taskIds } = useDailyPlan();
+  const navigate = useNavigate();
 
   const totalTasks = tasks.length;
   const completedTasks = byStatus.concluida.length;
@@ -24,9 +30,13 @@ export default function Analysis() {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
   }
 
-  const alerts = [];
-  if (saldo < 0) alerts.push({ type: 'danger', msg: 'Saldo negativo! Revise seus gastos.' });
-  if (taskRate < 30 && totalTasks > 0) alerts.push({ type: 'danger', msg: `Taxa de execução baixa (${taskRate}%). Foque nas tarefas prioritárias.` });
+  const focusRate = totalPlannedMin > 0 ? Math.min(100, Math.round((totalFilledMin / totalPlannedMin) * 100)) : null;
+  const overdueTasks = tasks.filter(t => t.status !== 'concluida' && t.due_date && t.due_date < new Date().toISOString().slice(0, 10));
+  const alerts: { type: 'danger' | 'warning'; msg: string; action: string; to: string }[] = [];
+  if (saldo < 0) alerts.push({ type: 'danger', msg: 'Saldo negativo! Revise seus gastos.', action: 'Abrir finanças', to: '/finances' });
+  if (overdueTasks.length) alerts.push({ type: 'warning', msg: `${overdueTasks.length} tarefa(s) está(ão) atrasada(s). Escolha o que realmente cabe hoje.`, action: 'Revisar Hoje', to: '/planning' });
+  if (taskIds.length === 0) alerts.push({ type: 'warning', msg: 'Seu plano de Hoje ainda está vazio.', action: 'Escolher tarefas', to: '/planning' });
+  if (focusRate !== null && focusRate < 50) alerts.push({ type: 'warning', msg: `Apenas ${focusRate}% do tempo bloqueado foi executado. Realoque ou reduza os blocos.`, action: 'Ver blocos', to: '/pomodoro' });
 
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
@@ -65,9 +75,18 @@ export default function Analysis() {
             <motion.div key={i} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 + i * 0.05 }}
               className={`arrow-card p-4 flex items-center gap-3 ${a.type === 'danger' ? 'border-red-200 bg-red-50/60' : 'border-amber-200 bg-amber-50/60'}`}>
               <AlertTriangle className={`w-5 h-5 flex-shrink-0 ${a.type === 'danger' ? 'text-red-500' : 'text-amber-500'}`} />
-              <p className={`text-sm ${a.type === 'danger' ? 'text-red-700' : 'text-amber-700'}`}>{a.msg}</p>
+              <p className={`text-sm flex-1 ${a.type === 'danger' ? 'text-red-700' : 'text-amber-700'}`}>{a.msg}</p>
+              <button onClick={() => navigate(a.to)} className="text-xs font-semibold underline">{a.action}</button>
             </motion.div>
           ))}
+        </div>
+      )}
+
+      {totalTasks === 0 && totalPlannedMin === 0 && (
+        <div className="arrow-card p-6 mb-6 text-center">
+          <p className="font-semibold text-sm">Ainda não há dados suficientes para gerar insights.</p>
+          <p className="text-xs text-gray-500 mt-1">Crie um plano de Hoje, conclua uma tarefa ou registre um bloco de foco.</p>
+          <button onClick={() => navigate('/planning')} className="arrow-btn-primary text-xs mt-3">Planejar meu dia</button>
         </div>
       )}
 
@@ -81,6 +100,10 @@ export default function Analysis() {
             <div>
               <div className="flex justify-between text-xs mb-1"><span className="text-gray-500">Metas</span><span className="font-semibold">{completedGoals}/{goals.length}</span></div>
               <Progress value={goalRate} className="h-2" />
+            </div>
+            <div>
+              <div className="flex justify-between text-xs mb-1"><span className="text-gray-500">Tempo bloqueado</span><span className="font-semibold">{focusRate === null ? '—' : `${focusRate}%`}</span></div>
+              <Progress value={focusRate ?? 0} className="h-2" />
             </div>
             <div>
               <div className="flex justify-between text-xs mb-1"><span className="text-gray-500">Tarefas</span><span className="font-semibold">{completedTasks}/{totalTasks}</span></div>

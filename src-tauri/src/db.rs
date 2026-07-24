@@ -17,7 +17,11 @@ fn json_fields(table: &str) -> &'static [&'static str] {
         "workout_programs" => &["schedule", "days_of_week"],
         "workout_templates" => &["exercises"],
         "workout_sessions" => &["exercises_log"],
+        "health_documents" => &["tags"],
         "media_list_items" => &["tags"],
+        "daily_plans" => &["task_ids"],
+        "time_blocks" => &["tasks"],
+        "pomodoro_sessions" => &[],
         _ => &[],
     }
 }
@@ -28,6 +32,8 @@ fn bool_fields(table: &str) -> &'static [&'static str] {
         "workout_programs" => &["is_active"],
         "media_lists" => &["is_system"],
         "release_schedules" => &["link_to_calendar"],
+        "workout_checkins" => &["performance_drop"],
+        "pomodoro_sessions" => &["completed", "manual"],
         _ => &[],
     }
 }
@@ -249,6 +255,11 @@ impl ArrowDatabase {
             .map_err(|e| e.to_string())
     }
 
+    pub fn verify_integrity(&self) -> Result<(), String> {
+        let result: String = self.conn.query_row("PRAGMA integrity_check", [], |row| row.get(0)).map_err(|e| e.to_string())?;
+        if result.eq_ignore_ascii_case("ok") { Ok(()) } else { Err(format!("O banco do Vault falhou na verificação de integridade: {}. Restaure uma cópia sincronizada ou backup antes de continuar.", result)) }
+    }
+
     fn column_exists(&self, table: &str, column: &str) -> bool {
         let sql = format!("PRAGMA table_info({})", table);
         let mut stmt = match self.conn.prepare(&sql) {
@@ -345,6 +356,97 @@ impl ArrowDatabase {
         }
         if from < 6 {
             self.ensure_note_links_table()?;
+        }
+        if from < 7 {
+            self.conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS daily_plans (
+                  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, date TEXT NOT NULL,
+                  mit_task_id TEXT, mit_text TEXT, task_ids TEXT NOT NULL DEFAULT '[]',
+                  created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(user_id, date)
+                );
+                CREATE TABLE IF NOT EXISTS time_blocks (
+                  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, date TEXT NOT NULL,
+                  start_min INTEGER NOT NULL, end_min INTEGER NOT NULL,
+                  tasks TEXT NOT NULL DEFAULT '[]', label TEXT NOT NULL,
+                  type TEXT NOT NULL DEFAULT 'focus', color TEXT NOT NULL,
+                  filled_min REAL NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_time_blocks_user_date ON time_blocks(user_id, date);"
+            ).map_err(|e| e.to_string())?;
+        }
+        if from < 8 {
+            self.ensure_column("workout_programs", "end_date", "end_date TEXT")?;
+            self.ensure_column("workout_programs", "deload_mode", "deload_mode TEXT DEFAULT 'manual'")?;
+            self.ensure_column("workout_programs", "deload_after_sessions", "deload_after_sessions INTEGER")?;
+            self.ensure_column("workout_programs", "deload_after_weeks", "deload_after_weeks INTEGER")?;
+            self.ensure_column("workout_programs", "deload_volume_percent", "deload_volume_percent INTEGER DEFAULT 60")?;
+            self.ensure_column("workout_sessions", "session_mode", "session_mode TEXT DEFAULT 'completa'")?;
+            self.ensure_column("workout_sessions", "rpe", "rpe REAL")?;
+            self.ensure_column("workout_sessions", "skip_reason", "skip_reason TEXT")?;
+            self.ensure_column("workout_sessions", "checkin_id", "checkin_id TEXT")?;
+            self.conn.execute_batch(
+              "CREATE TABLE IF NOT EXISTS workout_checkins (
+                id TEXT PRIMARY KEY, user_id TEXT NOT NULL, session_id TEXT NOT NULL,
+                energy INTEGER, sleep_quality INTEGER, pain_level INTEGER, fatigue_level INTEGER,
+                performance_drop INTEGER NOT NULL DEFAULT 0, available_minutes INTEGER, notes TEXT,
+                created_at TEXT NOT NULL
+              );
+              CREATE TABLE IF NOT EXISTS workout_goals (
+                id TEXT PRIMARY KEY, user_id TEXT NOT NULL, program_id TEXT NOT NULL, cycle_id TEXT,
+                goal_type TEXT NOT NULL, title TEXT NOT NULL, exercise_id TEXT, exercise_name TEXT,
+                target_value REAL, target_reps INTEGER, target_frequency INTEGER,
+                current_value REAL NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'ativo',
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+              );
+              CREATE TABLE IF NOT EXISTS health_documents (
+                id TEXT PRIMARY KEY, user_id TEXT NOT NULL, program_id TEXT, cycle_id TEXT,
+                name TEXT NOT NULL, file_path TEXT NOT NULL, mime_type TEXT, document_date TEXT,
+                tags TEXT NOT NULL DEFAULT '[]', notes TEXT, created_at TEXT NOT NULL
+              );"
+            ).map_err(|e| e.to_string())?;
+        }
+        if from < 9 {
+            self.conn.execute_batch(
+              "CREATE TABLE IF NOT EXISTS weekly_plans (
+                id TEXT PRIMARY KEY, user_id TEXT NOT NULL, cycle_id TEXT NOT NULL, week_number INTEGER NOT NULL,
+                objective TEXT, capacity_hours REAL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                UNIQUE(user_id, cycle_id, week_number)
+              );"
+            ).map_err(|e| e.to_string())?;
+        }
+        if from < 10 {
+            self.ensure_column("daily_plans", "energy_level", "energy_level TEXT")?;
+        }
+        if from < 11 {
+            self.ensure_column("tasks", "weekly_subgoal_id", "weekly_subgoal_id TEXT")?;
+            self.ensure_column("tasks", "pomodoros_planned", "pomodoros_planned INTEGER NOT NULL DEFAULT 0")?;
+            self.ensure_column("tasks", "energy_level", "energy_level TEXT")?;
+            self.conn.execute_batch(
+              "CREATE TABLE IF NOT EXISTS weekly_subgoals (
+                id TEXT PRIMARY KEY, user_id TEXT NOT NULL, cycle_id TEXT NOT NULL,
+                week_number INTEGER NOT NULL, goal_id TEXT NOT NULL, title TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'ativa', priority TEXT NOT NULL DEFAULT 'media',
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+              );
+              CREATE INDEX IF NOT EXISTS idx_weekly_subgoals_cycle_week ON weekly_subgoals(user_id, cycle_id, week_number);
+              CREATE TABLE IF NOT EXISTS pomodoro_sessions (
+                id TEXT PRIMARY KEY, user_id TEXT NOT NULL, date TEXT NOT NULL, started_at TEXT NOT NULL,
+                duration_min INTEGER NOT NULL, mode TEXT NOT NULL, task_id TEXT, task_title TEXT,
+                block_id TEXT, completed INTEGER NOT NULL DEFAULT 0, note TEXT, manual INTEGER NOT NULL DEFAULT 0,
+                source_key TEXT UNIQUE, created_at TEXT NOT NULL
+              );
+              CREATE INDEX IF NOT EXISTS idx_pomodoro_sessions_user_date ON pomodoro_sessions(user_id, date);"
+            ).map_err(|e| e.to_string())?;
+        }
+        if from < 12 {
+            self.ensure_column("tasks", "legacy_pomodoros_completed", "legacy_pomodoros_completed INTEGER NOT NULL DEFAULT 0")?;
+            let mut stmt = self.conn.prepare("SELECT id, tags FROM tasks WHERE legacy_pomodoros_completed = 0").map_err(|e| e.to_string())?;
+            let rows = stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))).map_err(|e| e.to_string())?;
+            for row in rows {
+                let (id, tags) = row.map_err(|e| e.to_string())?;
+                let count = serde_json::from_str::<Value>(&tags).ok().and_then(|value| value.as_array().cloned()).map(|items| items.iter().find_map(|tag| tag.as_str().and_then(|text| text.strip_prefix("pomodoros:")).and_then(|value| value.parse::<i64>().ok())).unwrap_or(0)).unwrap_or(0);
+                if count > 0 { self.conn.execute("UPDATE tasks SET legacy_pomodoros_completed = ? WHERE id = ?", params![count, id]).map_err(|e| e.to_string())?; }
+            }
         }
         Ok(())
     }
@@ -583,6 +685,122 @@ impl ArrowDatabase {
             .execute("DELETE FROM tasks WHERE id = ?", params![id])
             .map_err(|e| e.to_string())?;
         Ok(())
+    }
+
+    // ─── Daily plans and time blocks ─────────────────────────
+
+    pub fn get_daily_plan(&self, user_id: &str, date: &str) -> Result<Option<Map<String, Value>>, String> {
+        let mut stmt = self.conn.prepare("SELECT * FROM daily_plans WHERE user_id = ? AND date = ?")
+            .map_err(|e| e.to_string())?;
+        match stmt.query_row(params![user_id, date], |row| row_to_map(row)) {
+            Ok(row) => Ok(Some(parse_row("daily_plans", row))),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    pub fn get_weekly_plan(&self, user_id: &str, cycle_id: &str, week_number: i64) -> Result<Option<Map<String, Value>>, String> {
+        let mut stmt = self.conn.prepare("SELECT * FROM weekly_plans WHERE user_id = ? AND cycle_id = ? AND week_number = ?").map_err(|e| e.to_string())?;
+        match stmt.query_row(params![user_id, cycle_id, week_number], |row| row_to_map(row)) { Ok(row) => Ok(Some(row)), Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None), Err(e) => Err(e.to_string()) }
+    }
+
+    pub fn upsert_weekly_plan(&self, user_id: &str, data: Value) -> Result<Map<String, Value>, String> {
+        let mut row = value_to_map(data);
+        let cycle_id = row.get("cycle_id").and_then(|value| value.as_str()).ok_or_else(|| "cycle_id é obrigatório".to_string())?.to_string();
+        let week = row.get("week_number").and_then(|value| value.as_i64()).ok_or_else(|| "week_number é obrigatório".to_string())?;
+        let ts = now_iso();
+        if let Some(current) = self.get_weekly_plan(user_id, &cycle_id, week)? {
+            let id = current.get("id").and_then(|value| value.as_str()).unwrap_or_default(); row.remove("id"); row.remove("user_id"); row.remove("cycle_id"); row.remove("week_number"); row.insert("updated_at".to_string(), json!(ts)); update_row(&self.conn, "weekly_plans", id, row)?; return get_by_id(&self.conn, "weekly_plans", id);
+        }
+        row.insert("user_id".to_string(), json!(user_id)); row.insert("created_at".to_string(), json!(ts)); row.insert("updated_at".to_string(), json!(ts)); let id = insert_row(&self.conn, "weekly_plans", row)?; get_by_id(&self.conn, "weekly_plans", &id)
+    }
+
+    pub fn list_weekly_subgoals(&self, user_id: &str, cycle_id: &str, week_number: i64) -> Result<Vec<Map<String, Value>>, String> {
+        let mut stmt = self.conn.prepare("SELECT * FROM weekly_subgoals WHERE user_id = ? AND cycle_id = ? AND week_number = ? ORDER BY created_at")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt.query_map(params![user_id, cycle_id, week_number], |row| row_to_map(row)).map_err(|e| e.to_string())?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(|e| e.to_string())
+    }
+
+    pub fn create_weekly_subgoal(&self, user_id: &str, data: Value) -> Result<Map<String, Value>, String> {
+        let ts = now_iso(); let mut row = value_to_map(data);
+        row.insert("user_id".to_string(), json!(user_id)); row.entry("status".to_string()).or_insert(json!("ativa"));
+        row.entry("priority".to_string()).or_insert(json!("media")); row.insert("created_at".to_string(), json!(ts)); row.insert("updated_at".to_string(), json!(ts));
+        let id = insert_row(&self.conn, "weekly_subgoals", row)?; get_by_id(&self.conn, "weekly_subgoals", &id)
+    }
+
+    pub fn update_weekly_subgoal(&self, id: &str, data: Value) -> Result<Map<String, Value>, String> {
+        let mut row = value_to_map(data); row.remove("id"); row.insert("updated_at".to_string(), json!(now_iso()));
+        update_row(&self.conn, "weekly_subgoals", id, row)?; get_by_id(&self.conn, "weekly_subgoals", id)
+    }
+
+    pub fn delete_weekly_subgoal(&self, id: &str) -> Result<(), String> {
+        self.conn.execute("UPDATE tasks SET weekly_subgoal_id = NULL WHERE weekly_subgoal_id = ?", params![id]).map_err(|e| e.to_string())?;
+        self.conn.execute("DELETE FROM weekly_subgoals WHERE id = ?", params![id]).map_err(|e| e.to_string())?; Ok(())
+    }
+
+    pub fn list_pomodoro_sessions(&self, user_id: &str, date: Option<&str>) -> Result<Vec<Map<String, Value>>, String> {
+        let (sql, values) = if let Some(date) = date {
+            ("SELECT * FROM pomodoro_sessions WHERE user_id = ? AND date = ? ORDER BY started_at DESC", vec![SqlValue::Text(user_id.to_string()), SqlValue::Text(date.to_string())])
+        } else { ("SELECT * FROM pomodoro_sessions WHERE user_id = ? ORDER BY started_at DESC", vec![SqlValue::Text(user_id.to_string())]) };
+        let mut stmt = self.conn.prepare(sql).map_err(|e| e.to_string())?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(values.iter()), |row| row_to_map(row)).map_err(|e| e.to_string())?;
+        rows.map(|r| r.map(|row| parse_row("pomodoro_sessions", row))).collect::<rusqlite::Result<Vec<_>>>().map_err(|e| e.to_string())
+    }
+
+    pub fn create_pomodoro_session(&self, user_id: &str, data: Value) -> Result<Map<String, Value>, String> {
+        let mut row = value_to_map(data); row.insert("user_id".to_string(), json!(user_id)); row.entry("completed".to_string()).or_insert(json!(false)); row.entry("manual".to_string()).or_insert(json!(false)); row.insert("created_at".to_string(), json!(now_iso()));
+        if let Some(source_key) = row.get("source_key").and_then(|v| v.as_str()) {
+            let existing: Result<String, _> = self.conn.query_row("SELECT id FROM pomodoro_sessions WHERE source_key = ?", params![source_key], |r| r.get(0));
+            if let Ok(id) = existing { return get_by_id(&self.conn, "pomodoro_sessions", &id); }
+        }
+        let id = insert_row(&self.conn, "pomodoro_sessions", row)?; get_by_id(&self.conn, "pomodoro_sessions", &id)
+    }
+
+    pub fn update_pomodoro_session(&self, id: &str, data: Value) -> Result<Map<String, Value>, String> {
+        update_row(&self.conn, "pomodoro_sessions", id, value_to_map(data))?; get_by_id(&self.conn, "pomodoro_sessions", id)
+    }
+
+    pub fn upsert_daily_plan(&self, user_id: &str, data: Value) -> Result<Map<String, Value>, String> {
+        let mut row = value_to_map(data);
+        let date = row.get("date").and_then(|v| v.as_str()).ok_or_else(|| "date é obrigatório".to_string())?.to_string();
+        let existing = self.get_daily_plan(user_id, &date)?;
+        let ts = now_iso();
+        if let Some(current) = existing {
+            let id = current.get("id").and_then(|v| v.as_str()).unwrap_or_default();
+            row.remove("id"); row.remove("user_id"); row.remove("date");
+            row.insert("updated_at".to_string(), json!(ts));
+            update_row(&self.conn, "daily_plans", id, row)?;
+            return get_by_id(&self.conn, "daily_plans", id);
+        }
+        row.insert("user_id".to_string(), json!(user_id));
+        row.entry("task_ids".to_string()).or_insert(json!([]));
+        row.insert("created_at".to_string(), json!(ts)); row.insert("updated_at".to_string(), json!(ts));
+        let id = insert_row(&self.conn, "daily_plans", row)?;
+        get_by_id(&self.conn, "daily_plans", &id)
+    }
+
+    pub fn list_time_blocks(&self, user_id: &str, date: &str) -> Result<Vec<Map<String, Value>>, String> {
+        let mut stmt = self.conn.prepare("SELECT * FROM time_blocks WHERE user_id = ? AND date = ? ORDER BY start_min")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt.query_map(params![user_id, date], |row| row_to_map(row)).map_err(|e| e.to_string())?;
+        rows.map(|r| r.map(|row| parse_row("time_blocks", row))).collect::<rusqlite::Result<Vec<_>>>().map_err(|e| e.to_string())
+    }
+
+    pub fn create_time_block(&self, user_id: &str, data: Value) -> Result<Map<String, Value>, String> {
+        let ts = now_iso(); let mut row = value_to_map(data);
+        row.insert("user_id".to_string(), json!(user_id)); row.entry("tasks".to_string()).or_insert(json!([]));
+        row.entry("filled_min".to_string()).or_insert(json!(0)); row.insert("created_at".to_string(), json!(ts)); row.insert("updated_at".to_string(), json!(ts));
+        let id = insert_row(&self.conn, "time_blocks", row)?; get_by_id(&self.conn, "time_blocks", &id)
+    }
+
+    pub fn update_time_block(&self, id: &str, data: Value) -> Result<Map<String, Value>, String> {
+        let mut row = value_to_map(data); row.remove("id"); row.insert("updated_at".to_string(), json!(now_iso()));
+        update_row(&self.conn, "time_blocks", id, row)?; get_by_id(&self.conn, "time_blocks", id)
+    }
+
+    pub fn delete_time_block(&self, id: &str) -> Result<(), String> {
+        self.conn.execute("DELETE FROM time_blocks WHERE id = ?", params![id]).map_err(|e| e.to_string())?; Ok(())
     }
 
     // ─── Habits ───────────────────────────────────────────────
@@ -1278,6 +1496,64 @@ impl ArrowDatabase {
         self.update_workout_session(id, Value::Object(updates))
     }
 
+    pub fn create_workout_checkin(&self, user_id: &str, data: Value) -> Result<Map<String, Value>, String> {
+        let mut row = value_to_map(data);
+        row.insert("user_id".to_string(), json!(user_id));
+        row.entry("performance_drop".to_string()).or_insert(json!(false));
+        row.insert("created_at".to_string(), json!(now_iso()));
+        let id = insert_row(&self.conn, "workout_checkins", row)?;
+        get_by_id(&self.conn, "workout_checkins", &id)
+    }
+
+    pub fn list_workout_goals(&self, user_id: &str, program_id: Option<&str>) -> Result<Vec<Map<String, Value>>, String> {
+        let mut sql = String::from("SELECT * FROM workout_goals WHERE user_id = ?");
+        let mut bind = vec![SqlValue::Text(user_id.to_string())];
+        if let Some(program) = program_id { sql.push_str(" AND program_id = ?"); bind.push(SqlValue::Text(program.to_string())); }
+        sql.push_str(" ORDER BY created_at DESC");
+        let mut stmt = self.conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(bind.iter()), |row| row_to_map(row)).map_err(|e| e.to_string())?;
+        rows.map(|r| r.map(|row| parse_row("workout_goals", row))).collect::<rusqlite::Result<Vec<_>>>().map_err(|e| e.to_string())
+    }
+
+    pub fn create_workout_goal(&self, user_id: &str, data: Value) -> Result<Map<String, Value>, String> {
+        let ts = now_iso(); let mut row = value_to_map(data);
+        row.insert("user_id".to_string(), json!(user_id)); row.entry("current_value".to_string()).or_insert(json!(0));
+        row.entry("status".to_string()).or_insert(json!("ativo")); row.insert("created_at".to_string(), json!(ts)); row.insert("updated_at".to_string(), json!(ts));
+        let id = insert_row(&self.conn, "workout_goals", row)?; get_by_id(&self.conn, "workout_goals", &id)
+    }
+
+    pub fn update_workout_goal(&self, id: &str, data: Value) -> Result<Map<String, Value>, String> {
+        let mut row = value_to_map(data); row.remove("id"); row.insert("updated_at".to_string(), json!(now_iso()));
+        update_row(&self.conn, "workout_goals", id, row)?; get_by_id(&self.conn, "workout_goals", id)
+    }
+
+    pub fn delete_workout_goal(&self, id: &str) -> Result<(), String> {
+        self.conn.execute("DELETE FROM workout_goals WHERE id = ?", params![id]).map_err(|e| e.to_string())?; Ok(())
+    }
+
+    pub fn list_health_documents(&self, user_id: &str, program_id: Option<&str>) -> Result<Vec<Map<String, Value>>, String> {
+        let mut sql = String::from("SELECT * FROM health_documents WHERE user_id = ?");
+        let mut bind = vec![SqlValue::Text(user_id.to_string())];
+        if let Some(program) = program_id { sql.push_str(" AND program_id = ?"); bind.push(SqlValue::Text(program.to_string())); }
+        sql.push_str(" ORDER BY created_at DESC");
+        let mut stmt = self.conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(bind.iter()), |row| row_to_map(row)).map_err(|e| e.to_string())?;
+        rows.map(|r| r.map(|row| parse_row("health_documents", row))).collect::<rusqlite::Result<Vec<_>>>().map_err(|e| e.to_string())
+    }
+
+    pub fn create_health_document(&self, user_id: &str, data: Value) -> Result<Map<String, Value>, String> {
+        let mut row = value_to_map(data); row.insert("user_id".to_string(), json!(user_id)); row.entry("tags".to_string()).or_insert(json!([])); row.insert("created_at".to_string(), json!(now_iso()));
+        let id = insert_row(&self.conn, "health_documents", row)?; get_by_id(&self.conn, "health_documents", &id)
+    }
+
+    pub fn delete_health_document(&self, id: &str) -> Result<(), String> {
+        self.conn.execute("DELETE FROM health_documents WHERE id = ?", params![id]).map_err(|e| e.to_string())?; Ok(())
+    }
+
+    pub fn get_health_document(&self, id: &str) -> Result<Map<String, Value>, String> {
+        get_by_id(&self.conn, "health_documents", id)
+    }
+
     pub fn get_exercise_progress(
         &self,
         user_id: &str,
@@ -1354,6 +1630,11 @@ impl ArrowDatabase {
                     point.insert("max_load_kg".to_string(), json!(max_load));
                     point.insert("max_reps".to_string(), json!(max_reps));
                     point.insert("total_volume".to_string(), json!(total_volume));
+                    let rpe = entry.get("rpe").and_then(|v| v.as_f64());
+                    if let Some(value) = rpe { point.insert("rpe".to_string(), json!(value)); }
+                    if max_load > 0.0 && max_reps > 0.0 {
+                        point.insert("estimated_1rm".to_string(), json!((max_load * (1.0 + max_reps / 30.0) * 10.0).round() / 10.0));
+                    }
                     progress.push(point);
                 }
             }
@@ -1372,6 +1653,14 @@ impl ArrowDatabase {
         let program = get_by_id(&self.conn, "workout_programs", program_id)?;
         let schedule = program.get("schedule").cloned().unwrap_or(json!([]));
         let dates = week_dates.as_array().cloned().unwrap_or_default();
+        let is_deload_week = program.get("deload_mode").and_then(|v| v.as_str()) == Some("weeks")
+            && program.get("deload_after_weeks").and_then(|v| v.as_i64()).map(|n| n > 0 && week_number % n == 0).unwrap_or(false);
+        let recovery_template = if is_deload_week {
+            self.list_workout_templates(program_id)?.into_iter().find(|template| {
+                template.get("label").and_then(|v| v.as_str()).map(|label| label.eq_ignore_ascii_case("r")).unwrap_or(false)
+                || template.get("name").and_then(|v| v.as_str()).map(|name| name.to_lowercase().contains("recupera") || name.to_lowercase().contains("deload")).unwrap_or(false)
+            }).and_then(|template| template.get("id").and_then(|v| v.as_str()).map(|value| value.to_string()))
+        } else { None };
         let mut created = Vec::new();
         if let Some(entries) = schedule.as_array() {
             for entry in entries {
@@ -1398,16 +1687,6 @@ impl ArrowDatabase {
                 if existing > 0 {
                     continue;
                 }
-                let template = get_by_id(&self.conn, "workout_templates", template_id)?;
-                let template_name = template
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Treino");
-                let label = template.get("label").and_then(|v| v.as_str()).unwrap_or("");
-                let training_type = program
-                    .get("training_type")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("academia");
                 let planned_start = entry
                     .get("planned_start_time")
                     .and_then(|v| v.as_str())
@@ -1416,35 +1695,14 @@ impl ArrowDatabase {
                     .get("planned_duration_minutes")
                     .and_then(|v| v.as_i64());
 
-                let task_title = match training_type {
-                    "corrida" | "natacao" | "ciclismo" => {
-                        format!("{} — {}", capitalize_training(training_type), template_name)
-                    }
-                    _ => format!("Treino {} — {}", label, template_name),
-                };
-
-                let mut task_row = Map::new();
-                task_row.insert("title".to_string(), json!(task_title));
-                task_row.insert("status".to_string(), json!("a_fazer"));
-                task_row.insert("priority".to_string(), json!("media"));
-                task_row.insert("cycle_id".to_string(), json!(cycle_id));
-                task_row.insert("week_number".to_string(), json!(week_number));
-                task_row.insert("tags".to_string(), json!(["treino"]));
-                let task = self.create_task(user_id, Value::Object(task_row))?;
-                let task_id = task
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-
                 let mut session_row = Map::new();
                 session_row.insert("program_id".to_string(), json!(program_id));
-                session_row.insert("template_id".to_string(), json!(template_id));
+                session_row.insert("template_id".to_string(), json!(recovery_template.as_deref().unwrap_or(template_id)));
                 session_row.insert("date".to_string(), json!(date));
                 session_row.insert("status".to_string(), json!("a_fazer"));
                 session_row.insert("cycle_id".to_string(), json!(cycle_id));
                 session_row.insert("week_number".to_string(), json!(week_number));
-                session_row.insert("task_id".to_string(), json!(task_id));
+                if is_deload_week { session_row.insert("session_mode".to_string(), json!("recuperacao")); }
                 if let Some(ref t) = planned_start {
                     session_row.insert("planned_start_time".to_string(), json!(t));
                 }

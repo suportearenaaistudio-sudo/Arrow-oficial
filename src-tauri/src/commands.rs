@@ -14,7 +14,7 @@ use crate::ai_personal::get_personal_context;
 use crate::app_state::{load_app_state, save_app_state};
 use crate::db::ArrowDatabase;
 use crate::notes::NotesStore;
-use crate::paths::db_path;
+use crate::paths::{attachments_dir, db_path};
 use crate::types::{UiProfile, VaultStatus};
 use crate::vault::{LocalProfileUpdate, VaultManager};
 
@@ -287,6 +287,94 @@ pub fn db_tasks_delete(state: State<'_, AppData>, id: String) -> Result<(), Stri
     let vault = state.vault.lock().map_err(|e| e.to_string())?;
     vault.get_database()?.delete_task(&id)?;
     Ok(())
+}
+
+#[tauri::command]
+pub fn db_daily_plans_get(state: State<'_, AppData>, date: String) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    Ok(vault.get_database()?.get_daily_plan(&user_id, &date)?.map(Value::Object).unwrap_or(Value::Null))
+}
+
+#[tauri::command]
+pub fn db_daily_plans_upsert(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    Ok(Value::Object(vault.get_database()?.upsert_daily_plan(&user_id, data)?))
+}
+
+#[tauri::command]
+pub fn db_weekly_plans_get(state: State<'_, AppData>, cycle_id: String, week_number: i64) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?; let user_id = vault.get_profile_id()?;
+    Ok(vault.get_database()?.get_weekly_plan(&user_id, &cycle_id, week_number)?.map(Value::Object).unwrap_or(Value::Null))
+}
+#[tauri::command]
+pub fn db_weekly_plans_upsert(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?; let user_id = vault.get_profile_id()?;
+    Ok(Value::Object(vault.get_database()?.upsert_weekly_plan(&user_id, data)?))
+}
+
+#[tauri::command]
+pub fn db_weekly_subgoals_list(state: State<'_, AppData>, cycle_id: String, week_number: i64) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?; let user_id = vault.get_profile_id()?;
+    Ok(json!(vault.get_database()?.list_weekly_subgoals(&user_id, &cycle_id, week_number)?))
+}
+#[tauri::command]
+pub fn db_weekly_subgoals_create(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?; let user_id = vault.get_profile_id()?;
+    Ok(Value::Object(vault.get_database()?.create_weekly_subgoal(&user_id, data)?))
+}
+#[tauri::command]
+pub fn db_weekly_subgoals_update(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?; let id = data.get("id").and_then(|v| v.as_str()).ok_or_else(|| "id é obrigatório".to_string())?.to_string();
+    Ok(Value::Object(vault.get_database()?.update_weekly_subgoal(&id, data)?))
+}
+#[tauri::command]
+pub fn db_weekly_subgoals_delete(state: State<'_, AppData>, id: String) -> Result<(), String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?; vault.get_database()?.delete_weekly_subgoal(&id)
+}
+
+#[tauri::command]
+pub fn db_pomodoro_sessions_list(state: State<'_, AppData>, date: Option<String>) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?; let user_id = vault.get_profile_id()?;
+    Ok(json!(vault.get_database()?.list_pomodoro_sessions(&user_id, date.as_deref())?))
+}
+#[tauri::command]
+pub fn db_pomodoro_sessions_create(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?; let user_id = vault.get_profile_id()?;
+    Ok(Value::Object(vault.get_database()?.create_pomodoro_session(&user_id, data)?))
+}
+#[tauri::command]
+pub fn db_pomodoro_sessions_update(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?; let id = data.get("id").and_then(|v| v.as_str()).ok_or_else(|| "id é obrigatório".to_string())?.to_string();
+    Ok(Value::Object(vault.get_database()?.update_pomodoro_session(&id, data)?))
+}
+
+#[tauri::command]
+pub fn db_time_blocks_list(state: State<'_, AppData>, date: String) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    Ok(json!(vault.get_database()?.list_time_blocks(&user_id, &date)?))
+}
+
+#[tauri::command]
+pub fn db_time_blocks_create(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    Ok(Value::Object(vault.get_database()?.create_time_block(&user_id, data)?))
+}
+
+#[tauri::command]
+pub fn db_time_blocks_update(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let id = data.get("id").and_then(|v| v.as_str()).ok_or_else(|| "id é obrigatório".to_string())?.to_string();
+    Ok(Value::Object(vault.get_database()?.update_time_block(&id, data)?))
+}
+
+#[tauri::command]
+pub fn db_time_blocks_delete(state: State<'_, AppData>, id: String) -> Result<(), String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    vault.get_database()?.delete_time_block(&id)
 }
 
 #[tauri::command]
@@ -619,6 +707,85 @@ pub fn db_workout_exercise_progress(
         &exercise_name,
         exercise_id.as_deref(),
     )?))
+}
+
+#[tauri::command]
+pub fn db_workout_checkins_create(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    Ok(Value::Object(vault.get_database()?.create_workout_checkin(&user_id, data)?))
+}
+
+#[tauri::command]
+pub fn db_workout_goals_list(state: State<'_, AppData>, program_id: Option<String>) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    Ok(json!(vault.get_database()?.list_workout_goals(&user_id, program_id.as_deref())?))
+}
+
+#[tauri::command]
+pub fn db_workout_goals_create(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    Ok(Value::Object(vault.get_database()?.create_workout_goal(&user_id, data)?))
+}
+
+#[tauri::command]
+pub fn db_workout_goals_update(state: State<'_, AppData>, data: Value) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let id = data.get("id").and_then(|v| v.as_str()).ok_or_else(|| "id é obrigatório".to_string())?.to_string();
+    Ok(Value::Object(vault.get_database()?.update_workout_goal(&id, data)?))
+}
+
+#[tauri::command]
+pub fn db_workout_goals_delete(state: State<'_, AppData>, id: String) -> Result<(), String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    vault.get_database()?.delete_workout_goal(&id)
+}
+
+#[tauri::command]
+pub fn db_health_documents_list(state: State<'_, AppData>, program_id: Option<String>) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    Ok(json!(vault.get_database()?.list_health_documents(&user_id, program_id.as_deref())?))
+}
+
+#[tauri::command]
+pub async fn health_pick_document(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    Ok(app.dialog().file().set_title("Escolha um documento de saúde").blocking_pick_file().map(|p| p.to_string()))
+}
+
+#[tauri::command]
+pub fn db_health_documents_import(state: State<'_, AppData>, source_path: String, data: Value) -> Result<Value, String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let user_id = vault.get_profile_id()?;
+    let vault_path = vault.get_vault_path()?;
+    let source = PathBuf::from(&source_path);
+    let filename = source.file_name().and_then(|name| name.to_str()).ok_or_else(|| "Arquivo inválido".to_string())?;
+    let target_dir = attachments_dir(&vault_path).join("health");
+    std::fs::create_dir_all(&target_dir).map_err(|e| e.to_string())?;
+    let target_name = format!("{}-{}", uuid::Uuid::new_v4(), filename);
+    let target = target_dir.join(&target_name);
+    std::fs::copy(&source, &target).map_err(|e| e.to_string())?;
+    let mut row = data.as_object().cloned().unwrap_or_default();
+    row.insert("name".to_string(), json!(filename));
+    row.insert("file_path".to_string(), json!(format!("attachments/health/{}", target_name)));
+    Ok(Value::Object(vault.get_database()?.create_health_document(&user_id, Value::Object(row))?))
+}
+
+#[tauri::command]
+pub fn db_health_documents_delete(state: State<'_, AppData>, id: String) -> Result<(), String> {
+    let vault = state.vault.lock().map_err(|e| e.to_string())?;
+    let document = vault.get_database()?.get_health_document(&id)?;
+    let vault_path = vault.get_vault_path()?;
+    if let Some(relative) = document.get("file_path").and_then(|value| value.as_str()) {
+        let path = vault_path.join(relative);
+        if path.starts_with(attachments_dir(&vault_path)) && path.exists() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+    vault.get_database()?.delete_health_document(&id)
 }
 
 // ─── Media list commands ────────────────────────────────────

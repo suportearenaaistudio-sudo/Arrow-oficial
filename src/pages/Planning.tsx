@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Sparkles, Star, CheckSquare, BarChart2,
+  Sparkles, CheckSquare, BarChart2,
   Smile, Meh, Frown, ChevronRight, Flag,
   ClipboardCheck, ListChecks, Target,
 } from 'lucide-react';
@@ -14,7 +14,10 @@ import { useWorkouts } from '@/hooks/useWorkouts';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { GoalGroup } from '@/components/ui/PlanningComponents';
+import TodayCenter from '@/components/planning/TodayCenter';
+import WorkoutProgramPlanner from '@/components/planning/WorkoutProgramPlanner';
+import { useWeeklyPlan } from '@/hooks/useWeeklyPlan';
+import WeeklySubgoals from '@/components/planning/WeeklySubgoals';
 import type { MoodType } from '@/types/arrow';
 
 const MOODS: { mood: MoodType; Icon: React.ElementType; label: string; color: string }[] = [
@@ -52,17 +55,14 @@ export default function Planning() {
   const navigate = useNavigate();
   const { theme, isDark } = useTheme();
   const { activeCycle, isLoading } = useCycles();
-  const { goals } = useGoals();
+  const { goals, createGoal } = useGoals();
   const { tasks, getTasksByWeek } = useTasks();
   const { todayCheckin, allCheckins, saveCheckin } = useDailyCheckin();
   const { finalizeWeek, isWeekFinalized, getScoreForWeek } = useWeeklyScores(activeCycle?.id);
   const { getWeekWorkoutScore } = useWorkouts();
+  const [planningView, setPlanningView] = useState<'dia' | 'semana' | 'ciclo'>('dia');
+  const [cycleGoalTitle, setCycleGoalTitle] = useState('');
 
-  // MIT state — persisted in localStorage
-  const mitKey = activeCycle ? `mit-${activeCycle.id}-${new Date().toISOString().split('T')[0]}` : '';
-  const [mitText, setMitText] = useState(() => mitKey ? (localStorage.getItem(mitKey) || '') : '');
-  const [mitTaskId, setMitTaskId] = useState<string | null>(null);
-  const [editingMit, setEditingMit] = useState(false);
 
   // Daily check-in modal
   const [checkinOpen, setCheckinOpen] = useState(false);
@@ -96,6 +96,7 @@ export default function Planning() {
   }
 
   const currentWeek = getCurrentWeek(activeCycle);
+  const { plan: weeklyPlan, save: saveWeeklyPlan } = useWeeklyPlan(activeCycle.id, currentWeek);
   const weekTasks = getTasksByWeek(activeCycle.id, currentWeek);
   const workoutStats = getWeekWorkoutScore(activeCycle.id, currentWeek);
   const tasksDone = weekTasks.filter(t => t.status === 'concluida').length;
@@ -129,11 +130,6 @@ export default function Planning() {
   const scoreColor = weekScore === null ? theme.textMuted
     : weekScore >= 85 ? '#22c55e' : weekScore >= 70 ? '#eab308' : '#ef4444';
 
-  function saveMit() {
-    if (mitKey) localStorage.setItem(mitKey, mitText);
-    setEditingMit(false);
-  }
-
   function handleSaveCheckin(e: React.FormEvent) {
     e.preventDefault();
     saveCheckin.mutate(checkinForm, { onSuccess: () => setCheckinOpen(false) });
@@ -155,7 +151,7 @@ export default function Planning() {
 
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
-      className="space-y-5 max-w-3xl">
+      className="space-y-5 max-w-6xl">
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -172,8 +168,12 @@ export default function Planning() {
         </button>
       </div>
 
+      <div className="inline-flex p-1 rounded-xl" style={{ background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' }}>
+        {(['dia', 'semana', 'ciclo'] as const).map((view) => <button key={view} onClick={() => setPlanningView(view)} className="px-4 py-1.5 rounded-lg text-xs font-semibold capitalize" style={{ background: planningView === view ? theme.accent : 'transparent', color: planningView === view ? theme.accentForeground : theme.textMuted }}>{view}</button>)}
+      </div>
+
       {/* Weekly report banner */}
-      {showReportBanner && (
+      {planningView === 'semana' && showReportBanner && (
         <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
           className="p-4 rounded-2xl flex items-center justify-between"
           style={{ background: 'rgba(234,179,8,0.12)', border: '1px solid rgba(234,179,8,0.25)' }}>
@@ -192,7 +192,7 @@ export default function Planning() {
       )}
 
       {/* Score bar */}
-      <div className="arrow-card p-4">
+      {planningView !== 'dia' && <div className="arrow-card p-4">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <BarChart2 className="w-4 h-4" style={{ color: theme.accent }} />
@@ -229,115 +229,19 @@ export default function Planning() {
             {weekScore !== null && weekScore >= 85 ? '✓ Meta de 85% atingida!' : 'Meta: ≥ 85%'}
           </span>
         </div>
-      </div>
+      </div>}
 
-      {/* MIT do Dia */}
-      <div className="arrow-card p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Star className="w-4 h-4" style={{ color: theme.accent }} />
-          <span className="text-sm font-semibold" style={{ color: theme.textPrimary }}>MIT — Tarefa Mais Importante de Hoje</span>
-        </div>
+      {planningView === 'dia' && <TodayCenter />}
 
-        {editingMit ? (
-          <div className="space-y-2">
-            <input value={mitText} onChange={e => setMitText(e.target.value)}
-              autoFocus onKeyDown={e => e.key === 'Enter' && saveMit()}
-              placeholder="Qual a tarefa mais importante de hoje?"
-              className="w-full px-3 py-2.5 rounded-xl text-sm focus:outline-none"
-              style={{ background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', border: `1px solid ${theme.border}`, color: theme.textPrimary }} />
-            {/* Select from week tasks */}
-            {weekTasks.filter(t => t.status !== 'concluida').length > 0 && (
-              <div className="space-y-1 max-h-32 overflow-y-auto">
-                <p className="text-xs" style={{ color: theme.textMuted }}>Ou selecione uma tarefa da semana:</p>
-                {weekTasks.filter(t => t.status !== 'concluida').map(t => (
-                  <button key={t.id} type="button"
-                    onClick={() => { setMitText(t.title); setMitTaskId(t.id); }}
-                    className="w-full text-left px-3 py-1.5 rounded-lg text-xs transition-colors hover:opacity-70"
-                    style={{
-                      background: mitTaskId === t.id ? theme.accentLight : (isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'),
-                      color: mitTaskId === t.id ? theme.accent : theme.textSecondary,
-                      border: `1px solid ${mitTaskId === t.id ? theme.accent : 'transparent'}`,
-                    }}>
-                    {t.title}
-                  </button>
-                ))}
-              </div>
-            )}
-            <div className="flex gap-2">
-              <button onClick={() => setEditingMit(false)}
-                className="flex-1 py-1.5 rounded-lg text-xs" style={{ color: theme.textMuted }}>
-                Cancelar
-              </button>
-              <button onClick={saveMit}
-                className="flex-1 py-1.5 rounded-lg text-xs font-medium"
-                style={{ background: theme.accent, color: isDark ? '#000' : '#fff' }}>
-                Salvar MIT
-              </button>
-            </div>
-          </div>
-        ) : (
-          <button onClick={() => setEditingMit(true)}
-            className="w-full text-left px-4 py-3 rounded-xl transition-all hover:opacity-80"
-            style={{
-              background: mitText ? theme.accentLight : (isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'),
-              border: `1px solid ${mitText ? theme.accent : theme.border}`,
-            }}>
-            {mitText
-              ? <span className="text-sm font-medium" style={{ color: theme.textPrimary }}>{mitText}</span>
-              : <span className="text-sm" style={{ color: theme.textMuted }}>+ Definir a tarefa mais importante de hoje</span>
-            }
-          </button>
-        )}
-      </div>
+      {planningView === 'ciclo' && <section className="arrow-card p-5"><h2 className="text-sm font-semibold">Metas do ciclo</h2><p className="text-xs mt-1" style={{ color: theme.textMuted }}>As submetas semanais serão vinculadas a estas metas.</p><form className="mt-3 flex gap-2" onSubmit={(event) => { event.preventDefault(); if (!cycleGoalTitle.trim()) return; createGoal.mutate({ title: cycleGoalTitle, cycle_id: activeCycle.id, category: 'pessoal', goal_type: 'projeto', measurement_type: 'dias', priority: 'media', current_value: 0, sub_goals: [], milestones: [], weekly_targets: [] }); setCycleGoalTitle(''); }}><input value={cycleGoalTitle} onChange={(event) => setCycleGoalTitle(event.target.value)} placeholder="Nova meta do ciclo" className="flex-1 rounded-xl border px-3 py-2 text-sm" /><button className="arrow-btn-primary text-sm">Criar meta</button></form><div className="mt-3 space-y-2">{goals.filter((goal) => goal.cycle_id === activeCycle.id).map((goal) => <div key={goal.id} className="rounded-lg border px-3 py-2 text-sm flex justify-between"><span>{goal.title}</span><span className="text-xs" style={{ color: theme.textMuted }}>{goal.status}</span></div>)}{!goals.some((goal) => goal.cycle_id === activeCycle.id) && <p className="text-xs" style={{ color: theme.textMuted }}>Ainda não há metas neste ciclo.</p>}</div></section>}
+      {planningView === 'ciclo' && <WorkoutProgramPlanner />}
 
-      {/* Week tasks by goal */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold" style={{ color: theme.textPrimary }}>
-            Tarefas da Semana {currentWeek}
-          </h2>
-          <span className="text-xs" style={{ color: theme.textMuted }}>
-            {weekTasks.length} tarefa{weekTasks.length !== 1 ? 's' : ''}
-          </span>
-        </div>
+      {planningView === 'semana' && <div className="arrow-card p-4 space-y-3"><div><p className="text-sm font-semibold">Objetivo da Semana {currentWeek}</p><p className="text-xs" style={{ color: theme.textMuted }}>Defina o resultado que orienta tarefas, blocos e treinos.</p></div><input value={weeklyPlan?.objective ?? ''} onChange={(event) => saveWeeklyPlan.mutate({ objective: event.target.value, capacity_hours: weeklyPlan?.capacity_hours })} placeholder="Ex.: concluir a proposta e realizar 3 sessões" className="w-full rounded-xl border px-3 py-2 text-sm" /><label className="text-xs flex items-center gap-2">Capacidade planejada <input type="number" min={1} value={weeklyPlan?.capacity_hours ?? 20} onChange={(event) => saveWeeklyPlan.mutate({ objective: weeklyPlan?.objective, capacity_hours: Number(event.target.value) })} className="w-16 rounded border px-2 py-1" /> horas</label></div>}
 
-        <div className="space-y-3">
-          {tasksByGoal.length === 0 ? (
-            <div className="arrow-card p-8 text-center">
-              <CheckSquare className="w-10 h-10 mx-auto mb-3" style={{ color: theme.textMuted, opacity: 0.3 }} />
-              <p className="text-sm" style={{ color: theme.textMuted }}>
-                Nenhuma tarefa para esta semana. Adicione tarefas em cada meta abaixo.
-              </p>
-            </div>
-          ) : (
-            tasksByGoal.map(group => (
-              <GoalGroup
-                key={group.goalId ?? 'unlinked'}
-                goalId={group.goalId}
-                goalTitle={group.title}
-                tasks={group.tasks}
-                cycleId={activeCycle.id}
-                weekNumber={currentWeek}
-              />
-            ))
-          )}
-
-          {/* Add group for each active goal not shown */}
-          {activeGoals.filter(g => !tasksByGoal.find(tg => tg.goalId === g.id)).map(goal => (
-            <GoalGroup
-              key={goal.id}
-              goalId={goal.id}
-              goalTitle={goal.title}
-              tasks={[]}
-              cycleId={activeCycle.id}
-              weekNumber={currentWeek}
-            />
-          ))}
-        </div>
-      </div>
+      {planningView === 'semana' && <WeeklySubgoals cycleId={activeCycle.id} weekNumber={currentWeek} goals={goals} tasks={weekTasks} />}
 
       {/* Check-in status */}
-      <div className="arrow-card p-4 flex items-center justify-between"
+      {planningView === 'dia' && <div className="arrow-card p-4 flex items-center justify-between"
         style={{ background: todayCheckin ? 'rgba(34,197,94,0.06)' : undefined }}>
         <div>
           <p className="text-sm font-semibold" style={{ color: theme.textPrimary }}>Check-in de Hoje</p>
@@ -353,7 +257,7 @@ export default function Planning() {
             Fazer agora
           </button>
         )}
-      </div>
+      </div>}
 
       {/* ── DAILY CHECK-IN MODAL ── */}
       <Dialog open={checkinOpen} onOpenChange={setCheckinOpen}>

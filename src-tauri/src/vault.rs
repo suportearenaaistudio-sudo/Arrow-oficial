@@ -40,6 +40,24 @@ fn validate_vault_version(vault_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn snapshot_database(vault_path: &Path) -> Result<(), String> {
+    let source = db_path(vault_path);
+    if !source.exists() { return Ok(()); }
+    let backups = arrow_dir(vault_path).join("backups");
+    fs::create_dir_all(&backups).map_err(|e| e.to_string())?;
+    let stamp = chrono::Utc::now().format("%Y%m%d-%H%M%S-%3f").to_string();
+    let target = backups.join(format!("arrow-{}.db", stamp));
+    fs::copy(&source, &target).map_err(|e| format!("Não foi possível criar cópia de segurança do Vault: {}", e))?;
+    for suffix in ["-wal", "-shm"] {
+        let sidecar = PathBuf::from(format!("{}{}", source.to_string_lossy(), suffix));
+        if sidecar.exists() { let _ = fs::copy(sidecar, PathBuf::from(format!("{}{}", target.to_string_lossy(), suffix))); }
+    }
+    let mut files = fs::read_dir(&backups).map_err(|e| e.to_string())?.filter_map(|entry| entry.ok()).filter(|entry| entry.file_name().to_string_lossy().ends_with(".db")).collect::<Vec<_>>();
+    files.sort_by_key(|entry| entry.file_name());
+    while files.len() > 5 { if let Some(old) = files.first() { let old_path = old.path(); let _ = fs::remove_file(&old_path); let _ = fs::remove_file(format!("{}-wal", old_path.to_string_lossy())); let _ = fs::remove_file(format!("{}-shm", old_path.to_string_lossy())); } files.remove(0); }
+    Ok(())
+}
+
 pub struct VaultManager {
     vault_path: Option<PathBuf>,
     profile: Option<LocalProfile>,
@@ -131,6 +149,7 @@ impl VaultManager {
         let db_file = db_path(path);
         let db = ArrowDatabase::open(db_file.to_str().unwrap())?;
         db.init()?;
+        db.verify_integrity()?;
 
         self.vault_path = Some(path.to_path_buf());
         self.profile = Some(profile.clone());
@@ -148,9 +167,11 @@ impl VaultManager {
         validate_vault_version(path)?;
 
         self.close_vault();
+        snapshot_database(path)?;
         let profile: LocalProfile = read_json(&profile_path(path))?;
         let db = ArrowDatabase::open(db_path(path).to_str().unwrap())?;
         db.init()?;
+        db.verify_integrity()?;
 
         self.vault_path = Some(path.to_path_buf());
         self.profile = Some(profile.clone());

@@ -58,8 +58,12 @@ CREATE TABLE IF NOT EXISTS tasks (
   estimated_hours REAL,
   actual_hours REAL NOT NULL DEFAULT 0,
   goal_id TEXT,
+  weekly_subgoal_id TEXT,
   cycle_id TEXT,
   week_number INTEGER,
+  pomodoros_planned INTEGER NOT NULL DEFAULT 0,
+  legacy_pomodoros_completed INTEGER NOT NULL DEFAULT 0,
+  energy_level TEXT,
   tags TEXT NOT NULL DEFAULT '[]',
   assignee TEXT,
   progress_percentage REAL NOT NULL DEFAULT 0,
@@ -196,6 +200,11 @@ CREATE TABLE IF NOT EXISTS workout_programs (
   habit_id TEXT,
   cycle_id TEXT,
   duration_weeks INTEGER DEFAULT 12,
+  end_date TEXT,
+  deload_mode TEXT DEFAULT 'manual',
+  deload_after_sessions INTEGER,
+  deload_after_weeks INTEGER,
+  deload_volume_percent INTEGER DEFAULT 60,
   is_active INTEGER NOT NULL DEFAULT 1,
   notes TEXT,
   created_at TEXT NOT NULL,
@@ -230,6 +239,10 @@ CREATE TABLE IF NOT EXISTS workout_sessions (
   task_id TEXT,
   cycle_id TEXT,
   week_number INTEGER,
+  session_mode TEXT DEFAULT 'completa',
+  rpe REAL,
+  skip_reason TEXT,
+  checkin_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (program_id) REFERENCES workout_programs(id) ON DELETE CASCADE,
@@ -291,3 +304,125 @@ CREATE TABLE IF NOT EXISTS release_schedules (
 
 CREATE INDEX IF NOT EXISTS idx_release_schedules_user_date
   ON release_schedules(user_id, release_date);
+
+CREATE TABLE IF NOT EXISTS daily_plans (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  date TEXT NOT NULL,
+  mit_task_id TEXT,
+  mit_text TEXT,
+  energy_level TEXT,
+  task_ids TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(user_id, date)
+);
+
+CREATE TABLE IF NOT EXISTS time_blocks (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  date TEXT NOT NULL,
+  start_min INTEGER NOT NULL,
+  end_min INTEGER NOT NULL,
+  tasks TEXT NOT NULL DEFAULT '[]',
+  label TEXT NOT NULL,
+  type TEXT NOT NULL DEFAULT 'focus',
+  color TEXT NOT NULL,
+  filled_min REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_time_blocks_user_date ON time_blocks(user_id, date);
+
+CREATE TABLE IF NOT EXISTS workout_checkins (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  energy INTEGER,
+  sleep_quality INTEGER,
+  pain_level INTEGER,
+  fatigue_level INTEGER,
+  performance_drop INTEGER NOT NULL DEFAULT 0,
+  available_minutes INTEGER,
+  notes TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS workout_goals (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  program_id TEXT NOT NULL,
+  cycle_id TEXT,
+  goal_type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  exercise_id TEXT,
+  exercise_name TEXT,
+  target_value REAL,
+  target_reps INTEGER,
+  target_frequency INTEGER,
+  current_value REAL NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'ativo',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (program_id) REFERENCES workout_programs(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS health_documents (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  program_id TEXT,
+  cycle_id TEXT,
+  name TEXT NOT NULL,
+  file_path TEXT NOT NULL,
+  mime_type TEXT,
+  document_date TEXT,
+  tags TEXT NOT NULL DEFAULT '[]',
+  notes TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (program_id) REFERENCES workout_programs(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS weekly_plans (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  cycle_id TEXT NOT NULL,
+  week_number INTEGER NOT NULL,
+  objective TEXT,
+  capacity_hours REAL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(user_id, cycle_id, week_number)
+);
+
+CREATE TABLE IF NOT EXISTS weekly_subgoals (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  cycle_id TEXT NOT NULL,
+  week_number INTEGER NOT NULL,
+  goal_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'ativa',
+  priority TEXT NOT NULL DEFAULT 'media',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_weekly_subgoals_cycle_week ON weekly_subgoals(user_id, cycle_id, week_number);
+
+CREATE TABLE IF NOT EXISTS pomodoro_sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  date TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  duration_min INTEGER NOT NULL,
+  mode TEXT NOT NULL,
+  task_id TEXT,
+  task_title TEXT,
+  block_id TEXT,
+  completed INTEGER NOT NULL DEFAULT 0,
+  note TEXT,
+  manual INTEGER NOT NULL DEFAULT 0,
+  source_key TEXT UNIQUE,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pomodoro_sessions_user_date ON pomodoro_sessions(user_id, date);

@@ -75,6 +75,34 @@ export const desktopAPI = {
       update: (data: unknown) => invoke('db_tasks_update', { data }),
       delete: (id: string) => invoke('db_tasks_delete', { id }),
     },
+    dailyPlans: {
+      get: (date: string) => invoke('db_daily_plans_get', { date }),
+      upsert: (data: unknown) => invoke('db_daily_plans_upsert', { data }),
+    },
+    weeklyPlans: {
+      get: (cycleId: string, weekNumber: number) => invoke('db_weekly_plans_get', { cycleId, weekNumber }),
+      upsert: (data: unknown) => invoke('db_weekly_plans_upsert', { data }),
+    },
+    weeklySubgoals: {
+      list: (cycleId: string, weekNumber: number) => invoke('db_weekly_subgoals_list', { cycleId, weekNumber }),
+      create: (data: unknown) => invoke('db_weekly_subgoals_create', { data }),
+      update: (data: unknown) => invoke('db_weekly_subgoals_update', { data }),
+      delete: (id: string) => invoke('db_weekly_subgoals_delete', { id }),
+    },
+    pomodoroSessions: {
+      list: (date?: string) => invoke('db_pomodoro_sessions_list', { date: date ?? null }),
+      create: (data: unknown) => invoke('db_pomodoro_sessions_create', { data }),
+      update: (data: unknown) => invoke('db_pomodoro_sessions_update', { data }),
+    },
+    timeBlocks: {
+      list: async (date: string) => {
+        const rows = await invoke<Record<string, unknown>[]>('db_time_blocks_list', { date });
+        return rows.map(fromTimeBlockRow);
+      },
+      create: async (data: unknown) => fromTimeBlockRow(await invoke<Record<string, unknown>>('db_time_blocks_create', { data: toTimeBlockRow(data) })),
+      update: async (data: unknown) => fromTimeBlockRow(await invoke<Record<string, unknown>>('db_time_blocks_update', { data: toTimeBlockRow(data) })),
+      delete: (id: string) => invoke('db_time_blocks_delete', { id }),
+    },
     habits: {
       list: () => invoke('db_habits_list'),
       create: (data: unknown) => invoke('db_habits_create', { data }),
@@ -124,6 +152,21 @@ export const desktopAPI = {
       },
       progress: (exerciseName: string, exerciseId?: string) =>
         invoke('db_workout_exercise_progress', { exerciseName, exerciseId: exerciseId ?? null }),
+      checkins: {
+        create: (data: unknown) => invoke('db_workout_checkins_create', { data }),
+      },
+      goals: {
+        list: (programId?: string) => invoke('db_workout_goals_list', { programId: programId ?? null }),
+        create: (data: unknown) => invoke('db_workout_goals_create', { data }),
+        update: (data: unknown) => invoke('db_workout_goals_update', { data }),
+        delete: (id: string) => invoke('db_workout_goals_delete', { id }),
+      },
+      healthDocuments: {
+        list: (programId?: string) => invoke('db_health_documents_list', { programId: programId ?? null }),
+        pick: () => invoke<string | null>('health_pick_document'),
+        import: (sourcePath: string, data: unknown) => invoke('db_health_documents_import', { sourcePath, data }),
+        delete: (id: string) => invoke('db_health_documents_delete', { id }),
+      },
     },
     mediaLists: {
       lists: {
@@ -237,3 +280,14 @@ export const desktopAPI = {
     },
   },
 };
+
+function toTimeBlockRow(data: unknown): Record<string, unknown> {
+  const block = data as Record<string, unknown>;
+  const { startMin, endMin, filledMin, ...rest } = block;
+  return { ...rest, start_min: startMin, end_min: endMin, filled_min: filledMin };
+}
+
+function fromTimeBlockRow(row: Record<string, unknown>): Record<string, unknown> {
+  const { start_min, end_min, filled_min, ...rest } = row;
+  return { ...rest, startMin: start_min, endMin: end_min, filledMin: filled_min };
+}

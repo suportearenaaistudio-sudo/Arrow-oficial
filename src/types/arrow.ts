@@ -121,6 +121,29 @@ export interface HabitCompletion {
   completed: boolean;
 }
 
+export interface DailyPlan {
+  id: string;
+  user_id: string;
+  date: string;
+  mit_task_id?: string | null;
+  mit_text?: string | null;
+  energy_level?: 'baixa' | 'normal' | 'alta' | null;
+  task_ids: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WeeklyPlan {
+  id: string;
+  user_id: string;
+  cycle_id: string;
+  week_number: number;
+  objective?: string;
+  capacity_hours?: number;
+  created_at: string;
+  updated_at: string;
+}
+
 // === Main Entity Interfaces ===
 
 export interface Profile {
@@ -189,8 +212,12 @@ export interface Task {
   estimated_hours?: number;
   actual_hours: number;
   goal_id?: string;
+  weekly_subgoal_id?: string;
   cycle_id?: string;
   week_number?: number;     // semana do ciclo (1-12)
+  pomodoros_planned?: number;
+  legacy_pomodoros_completed?: number;
+  energy_level?: 'leve' | 'media' | 'alta';
   tags: string[];
   assignee?: string;
   progress_percentage: number;
@@ -199,6 +226,19 @@ export interface Task {
   attachments: TaskAttachment[];
   blocked_reason?: string;
   completion_date?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WeeklySubgoal {
+  id: string;
+  user_id: string;
+  cycle_id: string;
+  week_number: number;
+  goal_id: string;
+  title: string;
+  status: 'ativa' | 'concluida' | 'cancelada';
+  priority: Priority;
   created_at: string;
   updated_at: string;
 }
@@ -353,6 +393,8 @@ export type AnalysisPeriod = 'atual' | 'mes' | 'trimestre' | 'ano';
 
 export type WorkoutSplitType = 'AB' | 'ABC' | 'ABCD' | 'ABCDE' | 'custom';
 export type WorkoutSessionStatus = 'a_fazer' | 'feito' | 'pulado';
+export type WorkoutSessionMode = 'completa' | 'reduzida' | 'recuperacao' | 'deload';
+export type DeloadMode = 'manual' | 'sessions' | 'weeks' | 'checkin_auto';
 export type WorkoutFocus = 'forca' | 'resistencia' | 'hipertrofia';
 export type WorkoutTrainingType =
   | 'academia' | 'corrida' | 'natacao' | 'luta' | 'ciclismo' | 'funcional' | 'outro';
@@ -385,6 +427,7 @@ export interface ExerciseLog {
   exercise_id?: string;
   name: string;
   sets: ExerciseSet[];
+  rpe?: number;
 }
 
 export interface WorkoutProgram {
@@ -400,6 +443,11 @@ export interface WorkoutProgram {
   habit_id?: string;
   cycle_id?: string;
   duration_weeks?: number;
+  end_date?: string;
+  deload_mode?: DeloadMode;
+  deload_after_sessions?: number;
+  deload_after_weeks?: number;
+  deload_volume_percent?: number;
   is_active: boolean;
   notes?: string;
   created_at: string;
@@ -433,6 +481,10 @@ export interface WorkoutSession {
   task_id?: string;
   cycle_id?: string;
   week_number?: number;
+  session_mode?: WorkoutSessionMode;
+  rpe?: number;
+  skip_reason?: string;
+  checkin_id?: string;
   created_at: string;
   updated_at: string;
 }
@@ -442,6 +494,48 @@ export interface ExerciseProgressPoint {
   max_load_kg: number;
   max_reps?: number;
   total_volume?: number;
+  rpe?: number;
+  estimated_1rm?: number;
+}
+
+export interface WorkoutCheckin {
+  id: string;
+  session_id: string;
+  energy?: number;
+  sleep_quality?: number;
+  pain_level?: number;
+  fatigue_level?: number;
+  performance_drop: boolean;
+  available_minutes?: number;
+  notes?: string;
+}
+
+export interface WorkoutGoal {
+  id: string;
+  program_id: string;
+  cycle_id?: string;
+  goal_type: 'frequencia' | 'forca' | 'volume';
+  title: string;
+  exercise_id?: string;
+  exercise_name?: string;
+  target_value?: number;
+  target_reps?: number;
+  target_frequency?: number;
+  current_value: number;
+  status: 'ativo' | 'concluido';
+}
+
+export interface HealthDocument {
+  id: string;
+  program_id?: string;
+  cycle_id?: string;
+  name: string;
+  file_path: string;
+  mime_type?: string;
+  document_date?: string;
+  tags: string[];
+  notes?: string;
+  created_at: string;
 }
 
 // === Media Lists ===

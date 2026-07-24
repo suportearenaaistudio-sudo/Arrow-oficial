@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
-import type { WorkoutExercise, WorkoutFocus, WorkoutSplitType, WorkoutTrainingType } from '@/types/arrow';
+import type { DeloadMode, WorkoutExercise, WorkoutFocus, WorkoutSplitType, WorkoutTrainingType } from '@/types/arrow';
 import {
   buildTemplateDrafts,
   FOCUS_OPTIONS,
@@ -31,6 +31,11 @@ export interface WorkoutWizardForm {
   focus: WorkoutFocus;
   days_of_week: number[];
   duration_weeks: number;
+  end_date?: string;
+  deload_mode: DeloadMode;
+  deload_after_sessions?: number;
+  deload_after_weeks?: number;
+  deload_volume_percent: number;
   create_habit: boolean;
   templates: WizardTemplateDraft[];
 }
@@ -44,6 +49,10 @@ export function createDefaultWizard(): WorkoutWizardForm {
     focus: 'hipertrofia',
     days_of_week: [1, 3, 5],
     duration_weeks: 12,
+    deload_mode: 'manual',
+    deload_after_sessions: 3,
+    deload_after_weeks: 4,
+    deload_volume_percent: 60,
     create_habit: true,
     templates: buildTemplateDrafts('ABC', 'hipertrofia', true),
   };
@@ -139,6 +148,20 @@ export default function WorkoutProgramWizard({
                     className="w-full px-3 py-2 rounded-xl border text-sm"
                     placeholder="Ex: Hipertrofia 2026"
                   />
+                </div>
+
+                <div className="rounded-2xl p-3 space-y-3" style={{ background: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.025)' }}>
+                  <div><label className="arrow-label block mb-1">Deload e recuperação</label>
+                    <select value={form.deload_mode} onChange={(e) => setForm((f) => ({ ...f, deload_mode: e.target.value as DeloadMode }))} className="w-full px-3 py-2 rounded-xl border text-sm">
+                      <option value="manual">Manual</option>
+                      <option value="sessions">Após um número de sessões de força</option>
+                      <option value="weeks">A cada número de semanas</option>
+                      <option value="checkin_auto">Automático por queda de desempenho</option>
+                    </select>
+                  </div>
+                  {form.deload_mode === 'sessions' && <label className="text-xs block">Após <input type="number" min={1} value={form.deload_after_sessions ?? 3} onChange={(e) => setForm((f) => ({ ...f, deload_after_sessions: Number(e.target.value) }))} className="w-14 mx-1 px-1 rounded border" /> sessões de força, programar a próxima como recuperação.</label>}
+                  {form.deload_mode === 'weeks' && <label className="text-xs block">A cada <input type="number" min={2} value={form.deload_after_weeks ?? 4} onChange={(e) => setForm((f) => ({ ...f, deload_after_weeks: Number(e.target.value) }))} className="w-14 mx-1 px-1 rounded border" /> semanas, programar uma semana reduzida.</label>}
+                  {form.deload_mode !== 'manual' && <label className="text-xs block">Volume no deload: <input type="number" min={30} max={90} value={form.deload_volume_percent} onChange={(e) => setForm((f) => ({ ...f, deload_volume_percent: Number(e.target.value) }))} className="w-14 mx-1 px-1 rounded border" />%</label>}
                 </div>
 
                 <div
