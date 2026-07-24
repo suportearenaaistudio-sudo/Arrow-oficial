@@ -39,9 +39,11 @@ export function usePlatformChrome(sidebarCollapsed: boolean): PlatformChrome {
       : isWindowsApp
         ? TOPBAR_WINDOWS_PADDING_TOP
         : 0;
-    const topBarTotalHeight = isDesktopApp
+    const topBarTotalHeight = isWindowsApp
       ? TOPBAR_TOTAL_HEIGHT_DESKTOP + topBarPaddingTop
-      : TOPBAR_TOTAL_HEIGHT_WEB;
+      : isDesktopApp
+        ? TOPBAR_TOTAL_HEIGHT_DESKTOP
+        : TOPBAR_TOTAL_HEIGHT_WEB;
     const trafficLightInset = isMacApp && sidebarCollapsed ? 76 : 0;
     return {
       isDesktopApp,

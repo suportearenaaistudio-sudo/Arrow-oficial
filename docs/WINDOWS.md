@@ -33,3 +33,8 @@ O controle **Efeito de vidro** nas configurações funciona no Windows. O app us
 ## Controles de janela
 
 No Windows, a barra nativa é ocultada (`decorations: false`) e os botões minimizar, maximizar e fechar ficam integrados na TopBar, no mesmo estilo dos outros ícones do app.
+
+Essas opções vivem em `src-tauri/tauri.windows.conf.json`. Não altere o
+comportamento global da janela em `tauri.conf.json`: o macOS usa
+`tauri.macos.conf.json`, com barra nativa em overlay, traffic lights, sombra e
+transparência próprias.

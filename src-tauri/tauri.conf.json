@@ -10,7 +10,6 @@
     "beforeBuildCommand": "npm run build"
   },
   "app": {
-    "macOSPrivateApi": false,
     "windows": [
       {
         "label": "main",
@@ -22,9 +21,7 @@
         "resizable": true,
         "fullscreen": false,
         "center": true,
-        "decorations": false,
-        "transparent": true,
-        "shadow": false
+        "transparent": true
       }
     ],
     "security": {

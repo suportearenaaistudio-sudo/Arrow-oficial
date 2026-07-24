@@ -22,7 +22,9 @@ export function markDesktopRoot(): void {
 
   document.documentElement.classList.add('desktop', 'is-desktop');
 
-  if (isWindowsDesktop()) {
+  if (isMacOSDesktop()) {
+    document.documentElement.classList.add('is-macos-desktop');
+  } else if (isWindowsDesktop()) {
     document.documentElement.classList.add('is-windows-desktop');
     document.documentElement.style.setProperty('--arrow-window-radius', `${WINDOWS_WINDOW_RADIUS_PX}px`);
   }

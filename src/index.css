@@ -384,13 +384,15 @@
     -webkit-backdrop-filter: none;
   }
 
-  /* macOS desktop: native vibrancy — tint only (CSS blur causes flicker) */
-  html.is-desktop .arrow-sidebar::before {
+  /* Native desktop vibrancy — tint only (CSS blur causes flicker) */
+  html.is-macos-desktop .arrow-sidebar::before,
+  html.is-windows-desktop .arrow-sidebar::before {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
 
-  html.is-desktop[data-glass-scope='none'] .arrow-sidebar::before {
+  html.is-macos-desktop[data-glass-scope='none'] .arrow-sidebar::before,
+  html.is-windows-desktop[data-glass-scope='none'] .arrow-sidebar::before {
     background: var(--arrow-bg-elevated);
   }
 
@@ -413,7 +415,8 @@
     -webkit-backdrop-filter: blur(40px) saturate(180%);
   }
 
-  html.is-desktop .app-main-glass::before {
+  html.is-macos-desktop .app-main-glass::before,
+  html.is-windows-desktop .app-main-glass::before {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
@@ -656,4 +659,3 @@
   border-left: 3px solid var(--arrow-accent);
   color: var(--arrow-text-secondary);
 }
-
